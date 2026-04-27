@@ -1,0 +1,35 @@
+[
+    {
+        "icon": "Phone",
+        "title": "Phone",
+        "details": [
+            "9135573167"
+        ],
+        "color": "text-blue-600"
+    },
+    {
+        "icon": "Mail",
+        "title": "Email",
+        "details": [
+            "mrnavneet04@gmail.com"
+        ],
+        "color": "text-green-600"
+    },
+    {
+        "icon": "MapPin",
+        "title": "Address",
+        "details": [
+            "Jalandhar, Punjab, India"
+        ],
+        "color": "text-red-600"
+    },
+    {
+        "icon": "Clock",
+        "title": "Business Hours",
+        "details": [
+            "Mon-Sat: 9AM-6PM",
+            "Sun: Closed"
+        ],
+        "color": "text-purple-600"
+    }
+]
