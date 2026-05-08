@@ -46,6 +46,11 @@ const QRScanner = ({ onSuccess }) => {
 
       scanner.render(
         (decodedText) => {
+          // Validate decoded text
+          if (!decodedText || decodedText.trim() === '') {
+            setMessage('Scanned QR code is empty. Please try again.');
+            return;
+          }
           setScannedData(decodedText);
           setIsScanning(false);
           try {

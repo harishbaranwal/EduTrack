@@ -60,7 +60,12 @@ const TeacherAttendance = () => {
       });
 
       if (response.data.success) {
-        setQrData(response.data.data.qrData);
+        const tokenData = response.data.data?.qrData;
+        if (!tokenData || tokenData.trim() === '') {
+          toast.error('Server returned empty QR token. Please try again.');
+          return;
+        }
+        setQrData(tokenData);
         toast.success('QR code generated successfully!');
         // Start polling for attendance updates
         startPollingAttendance();
@@ -68,6 +73,8 @@ const TeacherAttendance = () => {
         if (qrIntervalId) clearInterval(qrIntervalId);
         const id = setInterval(() => generateQR(), 30000);
         setQrIntervalId(id);
+      } else {
+        toast.error(response.data.message || 'Failed to generate QR');
       }
     } catch (err) {
       const errorMsg = err.response?.data?.message || 'Failed to generate QR code';
@@ -254,6 +261,9 @@ const TeacherAttendance = () => {
                       <p className="text-sm text-red-500 mt-1">
                         Valid until: {currentClass?.endTime}
                       </p>
+                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-gray-600 break-all max-h-20 overflow-y-auto">
+                        <strong>Token:</strong> {qrData.substring(0, 50)}...
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-16 text-gray-500">
