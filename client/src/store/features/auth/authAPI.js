@@ -26,6 +26,12 @@ export const authAPI = {
     return response.data;
   },
 
+  // Dev Login (development only - quick switch by email, no password needed)
+  devLogin: async (email) => {
+    const response = await API.post('/auth/dev-login', { email });
+    return response.data;
+  },
+
   // Logout
   logout: async () => {
     const response = await API.post('/auth/logout');

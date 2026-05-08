@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router';
-import { login, clearError } from '../store/features/auth/authSlice';
+import { login, devLogin, clearError } from '../store/features/auth/authSlice';
 import showToast from '../utils/toast';
 import Loader from '../components/Loader';
-import { BrainCircuit, ArrowLeft } from 'lucide-react';
+import { BrainCircuit, ArrowLeft, Zap } from 'lucide-react';
 
 const LOGOUT_MARKER_KEY = 'edutrack_logout_marker';
+const IS_DEV = import.meta.env.DEV;
 
 const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+  const [devEmail, setDevEmail] = useState('');
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -53,6 +55,12 @@ const Login = () => {
     dispatch(login(formData));
   };
 
+  // Dev-only: Quick switch by email (no password needed)
+  const handleDevLogin = (email) => {
+    localStorage.removeItem(LOGOUT_MARKER_KEY);
+    dispatch(devLogin(email));
+  };
+
   if (loading) return <Loader fullScreen />;
 
   return (
@@ -66,6 +74,38 @@ const Login = () => {
           <h2 className="mt-3 sm:mt-4 text-2xl sm:text-3xl font-bold text-gray-900">Welcome Back</h2>
           <p className="mt-2 text-sm sm:text-base text-gray-600">Sign in to EduTrack</p>
         </div>
+
+        {/* DEV QUICK SWITCH PANEL */}
+        {IS_DEV && (
+          <div className="bg-amber-50 border-2 border-amber-300 border-dashed p-4 sm:p-5 rounded-2xl shadow-sm mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-4 h-4 text-amber-600" />
+              <h3 className="text-sm font-bold text-amber-800">Dev Quick Switch</h3>
+              <span className="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-medium">DEV ONLY</span>
+            </div>
+            <p className="text-xs text-amber-700 mb-3">
+              Switch roles instantly — no password needed, no rate limits.
+            </p>
+
+            {/* Custom email input */}
+            <div className="flex gap-2 mb-3">
+              <input
+                type="email"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                placeholder="Enter any user email..."
+                className="flex-1 px-3 py-2 text-xs border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+              />
+              <button
+                onClick={() => devEmail && handleDevLogin(devEmail)}
+                disabled={!devEmail || loading}
+                className="px-3 py-2 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Switch
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Form Card */}
         <div className="bg-white border border-gray-200 p-6 sm:p-8 rounded-2xl shadow-md">

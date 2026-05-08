@@ -61,6 +61,19 @@ export const login = createAsyncThunk(
   }
 );
 
+// Dev-only: Quick login by email (no password) for rapid role-switching during testing
+export const devLogin = createAsyncThunk(
+  'auth/devLogin',
+  async (email, { rejectWithValue }) => {
+    try {
+      const response = await authAPI.devLogin(email);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Dev login failed');
+    }
+  }
+);
+
 export const logout = createAsyncThunk(
   'auth/logout',
   async (_, { rejectWithValue }) => {
@@ -212,6 +225,21 @@ const authSlice = createSlice({
         state.initialized = true;
       })
       .addCase(login.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Dev Login (same state handling as login)
+      .addCase(devLogin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(devLogin.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.isAuthenticated = true;
+        state.initialized = true;
+      })
+      .addCase(devLogin.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })

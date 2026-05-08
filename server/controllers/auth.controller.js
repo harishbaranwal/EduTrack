@@ -8,6 +8,34 @@ import { sendToken } from "../utils/sendToken.js";
 import { userResponse } from "../utils/userResponse.js";
 import { generateRegistrationNumber } from "../utils/generateRegistrationNumber.js";
 
+// ========== DEV-ONLY: Quick login by email (skips password check) ==========
+// This endpoint is ONLY available in development mode for rapid role-switching during testing.
+export const devLogin = async (req, res) => {
+  try {
+    if (process.env.NODE_ENV !== 'development') {
+      return res.status(403).json({ success: false, message: 'Not available in production' });
+    }
+
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email, accountVerified: true });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    const userWithBatch = await User.findById(user._id).populate('batch', 'name');
+    sendToken(userWithBatch, 200, `Dev login: Switched to ${user.role} (${user.name})`, res);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Dev login failed' });
+  }
+};
+
 
 // Register Controller
 export const register = async (req, res) => {
