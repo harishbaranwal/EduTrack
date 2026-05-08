@@ -234,7 +234,7 @@ export const getTeacherTimetable = async (teacherId, day = null) => {
   }
 
   const timetables = await Timetable.find(query)
-    .populate("batch", "name department year")
+    .populate("batch", "name department year students")
     .populate("classes.teacher", "name email");
 
   // Filter classes to show only teacher's classes and format for frontend
