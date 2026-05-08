@@ -227,9 +227,15 @@ const Attendance = () => {
                       {locationLoading ? 'Getting Location...' : location ? '✓ Location Captured' : 'Capture Location'}
                     </button>
                     <button
-                      onClick={() => setShowQRScanner(true)}
-                      disabled={submittingAttendance}
-                      className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                      onClick={() => {
+                        if (!location) {
+                          showToast.error('Please capture your location first');
+                          return;
+                        }
+                        setShowQRScanner(true);
+                      }}
+                      disabled={submittingAttendance || !location}
+                      className={`w-full py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${!location ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                     >
                       <QrCode className="w-5 h-5" />
                       {qrData ? 'Rescan QR Code' : 'Scan QR Code'}

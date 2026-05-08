@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'react-qr-code';
 import { QrCode, Users, Calendar, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -16,6 +16,7 @@ const TeacherAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [attendanceList, setAttendanceList] = useState([]);
+  const lastPresentRef = useRef(null);
 
   // Check for current class
   const checkCurrentClass = async () => {
@@ -107,7 +108,16 @@ const TeacherAttendance = () => {
             }
           });
           if (response.data.success) {
-            setAttendanceList(response.data.data);
+            const data = response.data.data;
+            // notify teacher if new present count increased
+            const newPresent = data.stats?.present ?? 0;
+            const lastPresent = lastPresentRef.current;
+            if (lastPresent !== null && newPresent > lastPresent) {
+              const diff = newPresent - lastPresent;
+              toast.success(`${diff} student${diff > 1 ? 's' : ''} marked present`);
+            }
+            lastPresentRef.current = newPresent;
+            setAttendanceList(data);
           }
         }
       } catch (err) {
