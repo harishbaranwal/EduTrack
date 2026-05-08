@@ -443,6 +443,7 @@ const BatchManagement = () => {
               <div className="space-y-3">
                 {users
                   .filter(user => user.role === 'Student')
+                  .filter(user => !user.batch)
                   .filter(user => !selectedBatch?.students?.some(s => s._id === user._id))
                   .map((student) => (
                     <div

@@ -146,8 +146,19 @@ const Timetable = () => {
           </p>
         </div>
 
-        {/* Mobile View - Day Cards */}
-        <div className="lg:hidden space-y-4">
+        {/* Student mobile/tablet restriction notice */}
+        {user?.role === 'Student' && (
+          <div className="lg:hidden bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+            <CalendarDays className="mx-auto h-10 w-10 text-amber-500 mb-3" />
+            <h3 className="text-lg font-semibold text-amber-800 mb-2">Desktop View Only</h3>
+            <p className="text-sm text-amber-700">
+              The timetable is available only on laptop or desktop view. Please open this page on a larger screen to view your class schedule.
+            </p>
+          </div>
+        )}
+
+        {/* Mobile View - Day Cards (hidden for students, they must use desktop) */}
+        <div className={`lg:hidden space-y-4 ${user?.role === 'Student' ? 'hidden' : ''}`}>
           {daysOfWeek.map((day) => {
             const dayClasses = Array.isArray(timetables) ? timetables.filter(t => t.day === day) : [];
             return (

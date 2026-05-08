@@ -4,18 +4,28 @@ import Batch from "../models/batch.model.js";
 import User from "../models/user.model.js";
 import Device from "../models/device.model.js";
 import jwt from "jsonwebtoken";
-import { getISTDayName, timeToMinutes, getISTDateString } from "../utils/timezone.js";
+import { getISTDayName, timeToMinutes, getISTDateString, getISTTimeString } from "../utils/timezone.js";
 import { calculateDistance } from "../services/attendance.service.js";
 
 // In-memory store for active QR tokens (short-lived cache)
 const qrTokenCache = new Map();
 
-// Clean up expired QR tokens every 60 seconds
+// In-memory store for device cooldown: deviceId -> { lastStudentId, lastUsedAt }
+const deviceCooldownCache = new Map();
+const DEVICE_COOLDOWN_MS = 20 * 60 * 1000; // 20 minutes
+
+// Clean up expired QR tokens and device cooldowns every 60 seconds
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of qrTokenCache.entries()) {
     if (value.expiresAt < now) {
       qrTokenCache.delete(key);
+    }
+  }
+  // Clean expired device cooldowns
+  for (const [key, value] of deviceCooldownCache.entries()) {
+    if (now - value.lastUsedAt > DEVICE_COOLDOWN_MS) {
+      deviceCooldownCache.delete(key);
     }
   }
 }, 60000);
@@ -112,6 +122,19 @@ export const markAttendanceByQR = async (req, res) => {
     // Device binding: require deviceId and enforce uniqueness
     if (!deviceId) {
       return res.status(400).json({ success: false, message: "deviceId is required" });
+    }
+
+    // Check device cooldown: two different students can't use same device within 20 min
+    const cooldownEntry = deviceCooldownCache.get(deviceId);
+    if (cooldownEntry && cooldownEntry.lastStudentId !== studentId) {
+      const elapsed = Date.now() - cooldownEntry.lastUsedAt;
+      if (elapsed < DEVICE_COOLDOWN_MS) {
+        const remaining = Math.ceil((DEVICE_COOLDOWN_MS - elapsed) / 60000);
+        return res.status(403).json({
+          success: false,
+          message: `This device was recently used by another student. Please wait ${remaining} minute(s) or use a different device.`,
+        });
+      }
     }
 
     // Check device binding: if device exists and bound to different user -> reject
@@ -234,6 +257,12 @@ export const markAttendanceByQR = async (req, res) => {
       { path: "batch", select: "name" }
     ]);
 
+    // Update device cooldown cache after successful attendance
+    deviceCooldownCache.set(deviceId, {
+      lastStudentId: studentId,
+      lastUsedAt: Date.now(),
+    });
+
     res.status(200).json({
       success: true,
       message: "Attendance marked successfully via QR code and location",
@@ -247,8 +276,8 @@ export const markAttendanceByQR = async (req, res) => {
   }
 };
 
-// Mark attendance using location
-export const markAttendanceByLocation = async (req, res) => {
+// Verify student location against teacher's active location (Stage 1)
+export const verifyStudentLocation = async (req, res) => {
   try {
     const studentId = req.user.id;
     const { latitude, longitude, subject, batchId } = req.body;
@@ -270,98 +299,128 @@ export const markAttendanceByLocation = async (req, res) => {
       });
     }
 
-    // Calculate distance from campus
-    const distance = calculateDistance(
-      parseFloat(latitude),
-      parseFloat(longitude),
-      CAMPUS_LOCATION.latitude,
-      CAMPUS_LOCATION.longitude
-    );
-
-    // Check if student is within allowed radius
-    if (distance > ALLOWED_RADIUS) {
-      return res.status(400).json({
-        success: false,
-        message: `You are ${distance.toFixed(0)}m away from campus. You must be within ${ALLOWED_RADIUS}m to mark attendance.`,
-        data: { distance, allowedRadius: ALLOWED_RADIUS }
-      });
-    }
-
-    const currentDate = getISTDateString();
-
-    // Check if attendance already exists
-    const existingAttendance = await Attendance.findOne({
-      user: studentId,
-      subject: subject,
-      date: new Date(currentDate),
-    });
-
-    if (existingAttendance) {
-      return res.status(400).json({
-        success: false,
-        message: "Attendance already marked for this subject today",
-      });
-    }
-
-    // Get today's timetable
+    // Get today's timetable to find the class
     const today = getISTDayName();
-    const timetable = await Timetable.findOne({
-      batch: batchId,
-      day: today,
-    });
-
+    const timetable = await Timetable.findOne({ batch: batchId, day: today });
     if (!timetable) {
-      return res.status(404).json({
-        success: false,
-        message: "No classes scheduled for today",
-      });
+      return res.status(404).json({ success: false, message: "No classes scheduled for today" });
     }
 
     const classInfo = timetable.classes.find(c => c.subject === subject);
     if (!classInfo) {
-      return res.status(404).json({
+      return res.status(404).json({ success: false, message: "Subject not found in today's timetable" });
+    }
+
+    // Check if teacher has shared location (look in teacherLocationCache)
+    const teacherId = classInfo.teacher.toString();
+    const teacherLoc = teacherLocationCache.get(teacherId);
+    if (!teacherLoc) {
+      return res.status(400).json({
         success: false,
-        message: "Subject not found in today's timetable",
+        message: "Your teacher has not enabled location sharing for this class yet. Please wait.",
       });
     }
 
-    // Create attendance record
-    const attendanceData = {
-      user: studentId,
-      batch: batchId,
-      timetable: timetable._id,
-      subject: subject,
-      teacher: classInfo.teacher,
-      date: new Date(currentDate),
-      classStartTime: classInfo.startTime,
-      classEndTime: classInfo.endTime,
-      status: "Present",
-      method: "Location",
-      markedBy: studentId,
-      location: {
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        distance: distance
-      }
-    };
+    // Check distance from campus
+    const distanceFromCampus = calculateDistance(
+      parseFloat(latitude), parseFloat(longitude),
+      CAMPUS_LOCATION.latitude, CAMPUS_LOCATION.longitude
+    );
 
-    const attendance = await createOrUpdateAttendance(attendanceData);
-    await attendance.populate([
-      { path: "user", select: "name email registrationNumber" },
-      { path: "teacher", select: "name email" },
-      { path: "batch", select: "name" }
-    ]);
+    if (distanceFromCampus > ALLOWED_RADIUS) {
+      return res.status(400).json({
+        success: false,
+        message: `You are ${distanceFromCampus.toFixed(0)}m away from campus. You must be within ${ALLOWED_RADIUS}m.`,
+      });
+    }
 
+    // Check distance from teacher
+    const distanceFromTeacher = calculateDistance(
+      parseFloat(latitude), parseFloat(longitude),
+      teacherLoc.latitude, teacherLoc.longitude
+    );
+
+    const TEACHER_RADIUS = 50;
+    if (distanceFromTeacher > TEACHER_RADIUS) {
+      return res.status(400).json({
+        success: false,
+        message: `You are ${distanceFromTeacher.toFixed(0)}m away from your teacher. You must be within ${TEACHER_RADIUS}m to proceed to QR scanning.`,
+      });
+    }
+
+    // Location verified — student can now proceed to scan QR
     res.status(200).json({
       success: true,
-      message: `Attendance marked successfully. Distance: ${distance.toFixed(1)}m from campus.`,
-      data: attendance,
+      message: "Location verified! You are near your teacher. Please scan the QR code now.",
+      data: {
+        locationVerified: true,
+        distanceFromCampus: distanceFromCampus.toFixed(1),
+        distanceFromTeacher: distanceFromTeacher.toFixed(1),
+        subject,
+        batchId,
+      },
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
       success: false,
-      message: error.message || "Failed to mark attendance",
+      message: error.message || "Failed to verify location",
     });
+  }
+};
+
+// In-memory store for teacher active locations
+const teacherLocationCache = new Map();
+
+// Teacher: share/update location for current class
+export const updateTeacherLocation = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { latitude, longitude } = req.body;
+
+    if (latitude == null || longitude == null) {
+      return res.status(400).json({ success: false, message: "Latitude and longitude are required" });
+    }
+
+    teacherLocationCache.set(teacherId, {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      updatedAt: Date.now(),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Location shared successfully. Students can now verify their location.",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message || "Failed to update location" });
+  }
+};
+
+// Teacher: stop sharing location
+export const stopTeacherLocation = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    teacherLocationCache.delete(teacherId);
+    res.status(200).json({ success: true, message: "Location sharing stopped." });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message || "Failed to stop location sharing" });
+  }
+};
+
+// Get teacher location status (for students to check)
+export const getTeacherLocationStatus = async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+    const loc = teacherLocationCache.get(teacherId);
+    res.status(200).json({
+      success: true,
+      data: {
+        isSharing: !!loc,
+        updatedAt: loc?.updatedAt || null,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message || "Failed to get teacher location" });
   }
 };
 
@@ -490,23 +549,6 @@ export const getClassAttendance = async (req, res) => {
 };
 
 // Generate QR data for attendance
-// In-memory store for active QR tokens (short-lived cache)
-const qrTokenCache = new Map();
-
-// Clean up expired QR tokens every 60 seconds
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of qrTokenCache.entries()) {
-    if (value.expiresAt < now) {
-      qrTokenCache.delete(key);
-    }
-  }
-}, 60000);
-
-// Generate a random short QR code ID
-const generateQRCode = () => {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
-};
 
 export const generateQRData = async (req, res) => {
   try {
@@ -535,6 +577,19 @@ export const generateQRData = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: validation.message,
+      });
+    }
+
+    // Change #2: QR generation only allowed within first 20 min of class start
+    const currentTime = getISTTimeString();
+    const currentMinutes = timeToMinutes(currentTime);
+    const classStartMinutes = timeToMinutes(validation.classInfo.startTime);
+    const QR_WINDOW_MINUTES = 20;
+
+    if (currentMinutes > classStartMinutes + QR_WINDOW_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `QR code generation is only available within the first ${QR_WINDOW_MINUTES} minutes of class start (${validation.classInfo.startTime}). The QR window has closed.`,
       });
     }
     

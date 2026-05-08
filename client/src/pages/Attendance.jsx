@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   markAttendanceQR, 
+  verifyLocation,
   fetchStudentAttendance, 
-  fetchTodayClasses 
+  fetchTodayClasses,
+  resetLocationVerification,
 } from '../store/features/attendence/attendanceSlice';
 import Loader from '../components/Loader';
 import Modal from '../components/Modal';
@@ -11,8 +13,9 @@ import QRScanner from '../components/QRScanner';
 import ManualAttendance from '../components/ManualAttendance';
 import showToast from '../utils/toast';
 import { formatDate, formatTime } from '../utils/dateUtils';
-import { QrCode, MapPin, Calendar, CheckCircle, Clock, BookOpen, Users } from 'lucide-react';
+import { QrCode, MapPin, Calendar, CheckCircle, Clock, BookOpen, Users, ShieldCheck, Scan } from 'lucide-react';
 import DashboardLayout from '../components/DashboardLayout';
+import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
 const Attendance = () => {
   const { user } = useSelector((state) => state.auth);
@@ -21,28 +24,37 @@ const Attendance = () => {
     (user?.role === 'Teacher' || user?.role === 'Admin') ? 'manual' : 'history'
   );
   const [showQRScanner, setShowQRScanner] = useState(false);
-  const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [qrData, setQrData] = useState(null);
   const [submittingAttendance, setSubmittingAttendance] = useState(false);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [fingerprintId, setFingerprintId] = useState(null);
 
   const dispatch = useDispatch();
-  const { attendanceList, todayClasses, loading } = useSelector((state) => state.attendance);
+  const { attendanceList, todayClasses, loading, locationVerified, verifiedClassInfo } = useSelector((state) => state.attendance);
 
-  // Ensure a persistent deviceId exists for this browser/device
-  const getOrCreateDeviceId = () => {
-    const key = 'edutrack_device_id';
-    let id = localStorage.getItem(key);
-    if (!id) {
-      // simple UUID v4
-      id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-      localStorage.setItem(key, id);
-    }
-    return id;
-  };
+  // Initialize FingerprintJS on mount
+  useEffect(() => {
+    const initFingerprint = async () => {
+      try {
+        const fp = await FingerprintJS.load();
+        const result = await fp.get();
+        setFingerprintId(result.visitorId);
+      } catch (err) {
+        // Fallback to localStorage UUID if FingerprintJS fails
+        const key = 'edutrack_device_id';
+        let id = localStorage.getItem(key);
+        if (!id) {
+          id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          });
+          localStorage.setItem(key, id);
+        }
+        setFingerprintId(id);
+      }
+    };
+    initFingerprint();
+  }, []);
 
   useEffect(() => {
     if (user?._id && user?.role === 'Student') {
@@ -51,24 +63,31 @@ const Attendance = () => {
     }
   }, [dispatch, user]);
 
-  const getLocation = () => {
+  // Stage 1: Verify location against teacher
+  const handleVerifyLocation = (classItem) => {
+    setSelectedClass(classItem);
     setLocationLoading(true);
+    dispatch(resetLocationVerification());
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setLocation({
+          const locationData = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-          });
-          setLocationLoading(false);
-          showToast.success('Location captured successfully');
+            subject: classItem.subject,
+            batchId: classItem.batchId || todayClasses[0]?.batchId,
+          };
 
-          if (qrData) {
-            submitCombinedAttendance(qrData, {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            });
-          }
+          dispatch(verifyLocation(locationData)).then((result) => {
+            setLocationLoading(false);
+            if (result.type?.includes('fulfilled')) {
+              showToast.success('Location verified! Now scan the QR code.');
+            } else {
+              const errMsg = result.payload || 'Location verification failed';
+              showToast.error(typeof errMsg === 'object' ? errMsg.message || JSON.stringify(errMsg) : errMsg);
+            }
+          });
         },
         (error) => {
           setLocationLoading(false);
@@ -81,33 +100,39 @@ const Attendance = () => {
     }
   };
 
-  const submitCombinedAttendance = async (capturedQrData = qrData, capturedLocation = location) => {
-    if (!capturedQrData || capturedQrData.trim() === '') {
-      showToast.error('Please scan the QR code first');
-      return;
-    }
-
-    if (!capturedLocation) {
-      showToast.error('Please capture your location first');
-      return;
-    }
-
+  // Stage 2: Scan QR and submit attendance
+  const handleQRSuccess = async (qrData) => {
     try {
+      if (!qrData || qrData.trim() === '') {
+        showToast.error('QR code scan failed. Please try again.');
+        return;
+      }
+
+      setShowQRScanner(false);
       setSubmittingAttendance(true);
+
       const attendanceData = {
-        qrData: capturedQrData,  // Send short QR code, server will resolve from cache
-        latitude: capturedLocation.latitude,
-        longitude: capturedLocation.longitude,
-        deviceId: getOrCreateDeviceId(),
+        qrData: qrData,
+        latitude: 0, // Location already verified in stage 1
+        longitude: 0,
+        deviceId: fingerprintId,
       };
 
+      // Re-capture location for the actual attendance record
+      if (navigator.geolocation) {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject);
+        });
+        attendanceData.latitude = position.coords.latitude;
+        attendanceData.longitude = position.coords.longitude;
+      }
+
       const result = await dispatch(markAttendanceQR(attendanceData));
-      if (result.type && result.type.includes('fulfilled')) {
-        const serverMessage = result.payload?.message || 'Attendance marked successfully using QR and location';
+      if (result.type?.includes('fulfilled')) {
+        const serverMessage = result.payload?.message || 'Attendance marked successfully!';
         showToast.success(serverMessage);
-        setShowQRScanner(false);
-        setQrData(null);
-        setLocation(null);
+        dispatch(resetLocationVerification());
+        setSelectedClass(null);
         dispatch(fetchStudentAttendance({}));
         dispatch(fetchTodayClasses());
       } else {
@@ -124,28 +149,6 @@ const Attendance = () => {
     }
   };
 
-  const handleQRSuccess = async (qrData) => {
-    try {
-      // Validate scanned data is not empty
-      if (!qrData || qrData.trim() === '') {
-        showToast.error('QR code scan failed. Please try again.');
-        return;
-      }
-      
-      setQrData(qrData);
-      setShowQRScanner(false);
-
-      // Auto-submit attendance immediately when QR is scanned
-      if (location) {
-        await submitCombinedAttendance(qrData, location);
-      } else {
-        showToast.error('Please capture your location first');
-      }
-    } catch {
-      showToast.error('Failed to mark attendance');
-    }
-  };
-
   if (loading) return <Loader />;
 
   return (
@@ -154,11 +157,10 @@ const Attendance = () => {
       <div className="container mx-auto max-w-7xl">
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">Attendance</h1>
 
-        {/* Tabs - Mobile Responsive */}
+        {/* Tabs */}
         <div className="bg-white rounded-lg shadow-md mb-4 sm:mb-6">
           <div className="border-b border-gray-200">
             <nav className="flex overflow-x-auto scrollbar-hide -mb-px">
-              {/* Show "Mark Attendance" tab only for students */}
               {user?.role === 'Student' && (
                 <button
                   onClick={() => setActiveTab('mark')}
@@ -173,7 +175,6 @@ const Attendance = () => {
                 </button>
               )}
               
-              {/* Show "Manual Attendance" tab only for teachers */}
               {(user?.role === 'Teacher' || user?.role === 'Admin') && (
                 <button
                   onClick={() => setActiveTab('manual')}
@@ -208,69 +209,67 @@ const Attendance = () => {
           <div className="p-3 sm:p-4 lg:p-6">
             {activeTab === 'mark' && user?.role === 'Student' && (
               <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+                {/* Two-Stage Attendance Flow */}
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 border border-gray-100">
                   <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                    Mark Attendance with QR + Location
+                    <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                    Two-Stage Attendance Verification
                   </h3>
-                  <p className="text-sm sm:text-base text-gray-600">
-                    Both checks are required. Capture your location and scan the class QR code, then submit.
+                  <p className="text-sm sm:text-base text-gray-600 mb-4">
+                    Step 1: Verify your location near teacher → Step 2: Scan QR code
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                    <div className={`rounded-lg border p-4 ${qrData ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
-                      <h4 className="font-medium text-gray-800 text-sm sm:text-base mb-1">QR Code</h4>
-                      <p className="text-xs sm:text-sm text-gray-600">
-                        {qrData ? 'QR code captured successfully.' : 'Scan the QR code shown by your teacher.'}
-                      </p>
+                  {/* Steps Progress */}
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                      locationVerified ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'
+                    }`}>
+                      <MapPin className="w-4 h-4" />
+                      Step 1: Location
+                      {locationVerified && <CheckCircle className="w-4 h-4" />}
                     </div>
-                    <div className={`rounded-lg border p-4 ${location ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
-                      <h4 className="font-medium text-gray-800 text-sm sm:text-base mb-1">Location</h4>
-                      <p className="text-xs sm:text-sm text-gray-600">
-                        {location ? `Captured at ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'Capture your current location to verify campus presence.'}
-                      </p>
+                    <div className="w-8 h-0.5 bg-gray-300" />
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                      locationVerified ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      <Scan className="w-4 h-4" />
+                      Step 2: QR Scan
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 mt-4">
-                    <button
-                      onClick={getLocation}
-                      disabled={locationLoading || submittingAttendance}
-                      className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
-                    >
-                      <MapPin className="w-5 h-5" />
-                      {locationLoading ? 'Getting Location...' : location ? '✓ Location Captured' : 'Capture Location'}
-                    </button>
-                    
-                    {location && (
+                  {/* Stage info based on state */}
+                  {!locationVerified ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-700 mb-3">
+                        📍 Select a class below and verify your location. Your teacher must have location sharing enabled.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-sm text-green-700 mb-3">
+                        ✅ Location verified for <strong>{verifiedClassInfo?.subject}</strong>! 
+                        You are {verifiedClassInfo?.distanceFromTeacher}m from your teacher. Now scan the QR code.
+                      </p>
                       <button
                         onClick={() => setShowQRScanner(true)}
                         disabled={submittingAttendance}
-                        className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                        className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
                       >
                         <QrCode className="w-5 h-5" />
-                        {qrData ? 'Rescan QR Code' : 'Scan QR Code'}
+                        {submittingAttendance ? 'Submitting...' : 'Scan QR Code Now'}
                       </button>
-                    )}
-                  </div>
-
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-sm text-blue-700">
-                      <span>📍 Step 1:</span> Capture your location<br />
-                      <span>📱 Step 2:</span> Scan the QR code shown by your teacher<br />
-                      Attendance will be marked automatically once verified.
-                    </p>
-                  </div>
-
+                    </div>
+                  )}
                 </div>
 
+                {/* Today's Classes */}
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Today's Classes</h3>
                   {todayClasses.length > 0 ? (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {todayClasses.map((classItem, index) => (
                         <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                          <div className="flex justify-between items-start gap-3">
+                          <div className="flex justify-between items-start gap-3 mb-3">
                             <div>
                               <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{classItem.subject}</h4>
                               <p className="text-xs sm:text-sm text-gray-600">{classItem.teacher?.name || 'Teacher TBA'}</p>
@@ -280,6 +279,22 @@ const Attendance = () => {
                               {classItem.classroom && <div>{classItem.classroom}</div>}
                             </div>
                           </div>
+                          <button
+                            onClick={() => handleVerifyLocation(classItem)}
+                            disabled={locationLoading || locationVerified}
+                            className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                              locationVerified && selectedClass?.subject === classItem.subject
+                                ? 'bg-green-100 text-green-700 cursor-default'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+                            }`}
+                          >
+                            <MapPin className="w-4 h-4" />
+                            {locationLoading && selectedClass?.subject === classItem.subject
+                              ? 'Verifying...'
+                              : locationVerified && selectedClass?.subject === classItem.subject
+                              ? '✓ Location Verified'
+                              : 'Verify Location for This Class'}
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -339,14 +354,10 @@ const Attendance = () => {
                             </td>
                             <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               <span className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
-                                attendance.method === 'QR_Scan' ? 'bg-blue-100 text-blue-800' :
-                                attendance.method === 'Location' ? 'bg-green-100 text-green-800' :
                                 attendance.method === 'QR_Scan+Location' ? 'bg-purple-100 text-purple-800' :
                                 'bg-gray-100 text-gray-800'
                               }`}>
-                                {attendance.method === 'QR_Scan' ? '📱 QR Scan' : 
-                                 attendance.method === 'Location' ? '📍 Location' : 
-                                 attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
+                                {attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
                               </span>
                             </td>
                           </tr>
@@ -381,14 +392,10 @@ const Attendance = () => {
                             </div>
                             <div className="flex items-center">
                               <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                attendance.method === 'QR_Scan' ? 'bg-blue-100 text-blue-800' :
-                                attendance.method === 'Location' ? 'bg-green-100 text-green-800' :
                                 attendance.method === 'QR_Scan+Location' ? 'bg-purple-100 text-purple-800' :
                                 'bg-gray-100 text-gray-800'
                               }`}>
-                                {attendance.method === 'QR_Scan' ? '📱 QR Scan' : 
-                                 attendance.method === 'Location' ? '📍 Location' : 
-                                 attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
+                                {attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
                               </span>
                             </div>
                           </div>
@@ -424,5 +431,3 @@ const Attendance = () => {
 };
 
 export default Attendance;
-
-// thia is a Comment;

@@ -1,6 +1,58 @@
 import Timetable from "../models/timetable.model.js";
 import Batch from "../models/batch.model.js";
+import User from "../models/user.model.js";
 import { getISTDayName, timeToMinutes, calculateDuration as calcDuration } from "../utils/timezone.js";
+
+// Helper: Check if a teacher has conflicting classes on the same day across ALL timetables
+const checkTeacherConflicts = async (day, classes, excludeTimetableId = null) => {
+  // Build a query to find all timetables on this day (excluding current one during update)
+  const query = { day };
+  if (excludeTimetableId) {
+    query._id = { $ne: excludeTimetableId };
+  }
+
+  const existingTimetables = await Timetable.find(query)
+    .populate('batch', 'name')
+    .populate('classes.teacher', 'name');
+
+  // For each new class, check if the teacher already has a class at overlapping time
+  for (const newClass of classes) {
+    const newStart = timeToMinutes(newClass.startTime);
+    const newEnd = timeToMinutes(newClass.endTime);
+    const teacherId = typeof newClass.teacher === 'object' ? newClass.teacher._id?.toString() : newClass.teacher?.toString();
+
+    if (!teacherId) continue;
+
+    for (const tt of existingTimetables) {
+      for (const existingClass of tt.classes) {
+        const existingTeacherId = typeof existingClass.teacher === 'object'
+          ? existingClass.teacher._id?.toString()
+          : existingClass.teacher?.toString();
+
+        if (existingTeacherId !== teacherId) continue;
+
+        const existingStart = timeToMinutes(existingClass.startTime);
+        const existingEnd = timeToMinutes(existingClass.endTime);
+
+        // Check time overlap
+        const hasOverlap =
+          (newStart >= existingStart && newStart < existingEnd) ||
+          (newEnd > existingStart && newEnd <= existingEnd) ||
+          (newStart <= existingStart && newEnd >= existingEnd);
+
+        if (hasOverlap) {
+          const teacherName = typeof existingClass.teacher === 'object'
+            ? existingClass.teacher.name
+            : (await User.findById(teacherId).select('name'))?.name || 'Unknown';
+          const batchName = typeof tt.batch === 'object' ? tt.batch.name : tt.batch;
+          throw new Error(
+            `Teacher "${teacherName}" is already assigned to "${existingClass.subject}" in batch "${batchName}" on ${day} from ${existingClass.startTime} to ${existingClass.endTime}. Please choose a different teacher or time slot.`
+          );
+        }
+      }
+    }
+  }
+};
 
 // Create a new timetable
  
@@ -19,6 +71,11 @@ export const createTimetable = async (timetableData) => {
 
   if (existing) {
     throw new Error(`Timetable already exists for ${timetableData.day} in this batch`);
+  }
+
+  // Check for teacher conflicts across all batches on this day
+  if (timetableData.classes && timetableData.classes.length > 0) {
+    await checkTeacherConflicts(timetableData.day, timetableData.classes);
   }
 
   const timetable = await Timetable.create(timetableData);
@@ -140,6 +197,16 @@ export const getTeacherTimetable = async (teacherId, day = null) => {
 //  Update timetable
  
 export const updateTimetable = async (timetableId, updateData) => {
+  // If classes are being updated, check for teacher conflicts
+  if (updateData.classes && updateData.classes.length > 0) {
+    const existingTimetable = await Timetable.findById(timetableId);
+    if (!existingTimetable) {
+      throw new Error("Timetable not found");
+    }
+    const day = updateData.day || existingTimetable.day;
+    await checkTeacherConflicts(day, updateData.classes, timetableId);
+  }
+
   const timetable = await Timetable.findByIdAndUpdate(timetableId, updateData, {
     new: true,
     runValidators: true,

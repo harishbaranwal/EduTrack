@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router';
 import { 
   Calendar, BookOpen, Clock, TrendingUp, UserCheck, 
-  AlertCircle, CheckCircle, Target, Award, User, Check
+  AlertCircle, CheckCircle, Target, Award, User, Check, X
 } from 'lucide-react';
 import DashboardLayout from '../../components/DashboardLayout';
 import dashboardAPI from '../../store/features/dashboard/dashboardAPI';
@@ -22,6 +22,7 @@ const StudentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
+  const [selectedDay, setSelectedDay] = useState(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -157,9 +158,12 @@ const StudentDashboard = () => {
   );
 
   const AttendanceDay = ({ day }) => (
-    <div className={`flex flex-col items-center p-2 sm:p-3 rounded-lg border ${
-      day.isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
-    }`}>
+    <div 
+      className={`flex flex-col items-center p-2 sm:p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+        day.isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-indigo-300'
+      }`}
+      onClick={() => setSelectedDay(day)}
+    >
       <span className="text-xs font-medium text-gray-600 mb-1 sm:mb-2">{day.day}</span>
       <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${
         day.status === 'Present' ? 'bg-green-100 text-green-600' : 
@@ -169,6 +173,51 @@ const StudentDashboard = () => {
       </div>
       <span className="text-xs text-gray-500 mt-1">{day.date}</span>
       {day.isToday && <span className="text-xs text-blue-600 font-medium">Today</span>}
+      <span className="text-[10px] text-indigo-500 mt-0.5">tap for details</span>
+    </div>
+  );
+
+  // Drill-down popup for a selected day
+  const DayDetailPopup = ({ day, onClose }) => (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 relative" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+          <X className="w-5 h-5" />
+        </button>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">{day.day} — {day.date}</h3>
+        <div className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mb-4 ${
+          day.status === 'Present' ? 'bg-green-100 text-green-700' :
+          day.status === 'Absent' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+        }`}>
+          {day.status || 'No Data'}
+        </div>
+        
+        {day.classes && day.classes.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">Class-wise Attendance:</p>
+            {day.classes.map((cls, i) => (
+              <div key={i} className={`flex items-center justify-between p-3 rounded-lg border ${
+                cls.status === 'Present' ? 'bg-green-50 border-green-200' : 
+                cls.status === 'Absent' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">{cls.subject}</p>
+                  <p className="text-xs text-gray-500">{cls.startTime} — {cls.endTime}</p>
+                  {cls.teacher && <p className="text-xs text-gray-500">Teacher: {cls.teacher}</p>}
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                  cls.status === 'Present' ? 'bg-green-100 text-green-700' :
+                  cls.status === 'Absent' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {cls.status || 'N/A'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No detailed class data available for this day.</p>
+        )}
+      </div>
     </div>
   );
 
@@ -219,13 +268,17 @@ const StudentDashboard = () => {
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {/* This Week's Attendance */}
           <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">This Week's Attendance</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">This Week's Attendance</h3>
+            <p className="text-xs text-gray-500 mb-3 sm:mb-4">Tap a day to see class-level details</p>
             <div className="grid grid-cols-5 gap-2 sm:gap-3">
               {(stats.thisWeekAttendance || []).map((day, index) => (
                 <AttendanceDay key={index} day={day} />
               ))}
             </div>
           </div>
+
+          {/* Day Detail Popup */}
+          {selectedDay && <DayDetailPopup day={selectedDay} onClose={() => setSelectedDay(null)} />}
 
           {/* Upcoming Classes */}
           <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'react-qr-code';
-import { QrCode, Users, Calendar, Clock } from 'lucide-react';
+import { QrCode, Users, Calendar, Clock, MapPin, MapPinOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import API from '../utils/api';
 import ManualAttendance from './ManualAttendance';
@@ -16,6 +16,8 @@ const TeacherAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [attendanceList, setAttendanceList] = useState([]);
+  const [locationSharing, setLocationSharing] = useState(false);
+  const [locationWatchId, setLocationWatchId] = useState(null);
   const lastPresentRef = useRef(null);
 
   // Check for current class
@@ -32,12 +34,59 @@ const TeacherAttendance = () => {
       }
     } catch (err) {
       setCurrentClass(null);
-      // Check if it's a 404 (no current class)
       if (err.response?.status === 404) {
         setError(err.response?.data?.message || 'No class is currently scheduled');
       } else {
         setError(err.response?.data?.message || 'Failed to check current class');
       }
+    }
+  };
+
+  // Toggle location sharing
+  const toggleLocationSharing = async () => {
+    if (locationSharing) {
+      // Stop sharing
+      try {
+        await API.post('/attendance/teacher/location/stop');
+        if (locationWatchId !== null) {
+          navigator.geolocation.clearWatch(locationWatchId);
+          setLocationWatchId(null);
+        }
+        setLocationSharing(false);
+        toast.success('Location sharing stopped');
+      } catch (err) {
+        toast.error('Failed to stop location sharing');
+      }
+    } else {
+      // Start sharing - continuously update teacher location
+      if (!navigator.geolocation) {
+        toast.error('Geolocation is not supported');
+        return;
+      }
+
+      const watchId = navigator.geolocation.watchPosition(
+        async (position) => {
+          try {
+            await API.post('/attendance/teacher/location', {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            });
+            if (!locationSharing) {
+              setLocationSharing(true);
+              toast.success('Location sharing started. Students can now verify their location.');
+            }
+          } catch (err) {
+            // Silently handle update errors
+          }
+        },
+        (error) => {
+          toast.error('Location error: ' + error.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      );
+
+      setLocationWatchId(watchId);
+      setLocationSharing(true);
     }
   };
 
@@ -49,14 +98,11 @@ const TeacherAttendance = () => {
     }
 
     try {
-      // Get teacher's current location
       return new Promise((resolve) => {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             async (position) => {
               const { latitude, longitude } = position.coords;
-              
-              // Extract batchId - handle both object and string cases
               const batchId = typeof currentClass.batch === 'object' 
                 ? currentClass.batch._id 
                 : currentClass.batch;
@@ -78,9 +124,7 @@ const TeacherAttendance = () => {
                   }
                   setQrData(tokenData);
                   toast.success('QR code generated successfully!');
-                  // Start polling for attendance updates
                   startPollingAttendance();
-                  // Start rotating QR every 30s
                   if (qrIntervalId) clearInterval(qrIntervalId);
                   const id = setInterval(() => generateQR(), 30000);
                   setQrIntervalId(id);
@@ -114,7 +158,6 @@ const TeacherAttendance = () => {
     try {
       const response = await API.get('/timetable/teacher/today');
       if (response.data.success) {
-        // Backend returns data.classes which itself contains classes array
         const scheduleData = response.data.data;
         const classesArray = scheduleData.classes?.classes || scheduleData.classes || [];
         setTodaySchedule(classesArray);
@@ -129,7 +172,6 @@ const TeacherAttendance = () => {
     const interval = setInterval(async () => {
       try {
         if (currentClass && currentClass.batch) {
-          // Use the /class endpoint with proper query parameters
           const batchId = typeof currentClass.batch === 'object' 
             ? currentClass.batch._id 
             : currentClass.batch;
@@ -143,7 +185,6 @@ const TeacherAttendance = () => {
           });
           if (response.data.success) {
             const data = response.data.data;
-            // notify teacher if new present count increased
             const newPresent = data.stats?.present ?? 0;
             const lastPresent = lastPresentRef.current;
             if (lastPresent !== null && newPresent > lastPresent) {
@@ -157,44 +198,39 @@ const TeacherAttendance = () => {
       } catch (err) {
         // Silently handle polling errors
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
-    // Clean up interval after class ends
-    setTimeout(() => {
-      clearInterval(interval);
-    }, 2 * 60 * 60 * 1000); // 2 hours max
-
+    setTimeout(() => { clearInterval(interval); }, 2 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   };
 
   useEffect(() => {
     const initializeData = async () => {
       setLoading(true);
-      await Promise.all([
-        checkCurrentClass(),
-        fetchTodaySchedule()
-      ]);
+      await Promise.all([checkCurrentClass(), fetchTodaySchedule()]);
       setLoading(false);
     };
-
     initializeData();
-
-    // Set up interval to check for current class every minute
     const interval = setInterval(checkCurrentClass, 60000);
-    
     return () => clearInterval(interval);
   }, []);
 
-  // Clear QR rotation interval when component unmounts
   useEffect(() => {
     return () => {
       if (qrIntervalId) clearInterval(qrIntervalId);
     };
   }, [qrIntervalId]);
 
-  if (loading) {
-    return <Loader />;
-  }
+  // Cleanup location watch on unmount
+  useEffect(() => {
+    return () => {
+      if (locationWatchId !== null) {
+        navigator.geolocation.clearWatch(locationWatchId);
+      }
+    };
+  }, [locationWatchId]);
+
+  if (loading) return <Loader />;
 
   return (
     <DashboardLayout>
@@ -214,7 +250,7 @@ const TeacherAttendance = () => {
               }`}
             >
               <QrCode className="w-4 h-4" />
-              <span>QR Code Attendance</span>
+              <span>QR + Location Attendance</span>
             </button>
             <button
               onClick={() => setActiveTab('manual')}
@@ -233,9 +269,35 @@ const TeacherAttendance = () => {
         <div className="p-6">
           {activeTab === 'qr' && (
             <div>
+              {/* Location Sharing Toggle */}
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                      {locationSharing ? <MapPin className="w-5 h-5 text-green-600" /> : <MapPinOff className="w-5 h-5 text-gray-400" />}
+                      Location Sharing
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {locationSharing 
+                        ? 'Your location is being shared. Students can verify their proximity.'
+                        : 'Enable location sharing so students can verify they are near you.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={toggleLocationSharing}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      locationSharing
+                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {locationSharing ? 'Stop Sharing' : 'Start Sharing'}
+                  </button>
+                </div>
+              </div>
+
               {/* Current Class Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {/* Current Class Info */}
                 <div className="bg-gray-50 rounded-lg p-6">
                   <h2 className="text-xl font-semibold mb-4 flex items-center">
                     <Calendar className="w-5 h-5 mr-2" />
@@ -255,6 +317,13 @@ const TeacherAttendance = () => {
                         <p className="text-gray-600">Room: {currentClass.room || 'TBA'}</p>
                       </div>
                       
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs text-amber-700">
+                          ⏰ QR codes can only be generated within the first <strong>20 minutes</strong> of class start ({currentClass.startTime}). 
+                          Each QR refreshes every 30 seconds.
+                        </p>
+                      </div>
+
                       <button
                         onClick={generateQR}
                         className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center space-x-2"
@@ -283,7 +352,7 @@ const TeacherAttendance = () => {
                         <QRCode value={qrData} size={200} />
                       </div>
                       <p className="text-sm text-gray-600 mt-2">
-                        Students can scan this QR code to mark attendance
+                        Students must first verify location, then scan this QR code
                       </p>
                       <p className="text-sm text-red-500 mt-1">
                         Valid for 30 seconds • Refreshes automatically
@@ -303,7 +372,6 @@ const TeacherAttendance = () => {
               {/* Today's Schedule */}
               <div className="bg-gray-50 rounded-lg p-6 mb-8">
                 <h2 className="text-xl font-semibold mb-4">Today's Schedule</h2>
-                
                 {todaySchedule.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {todaySchedule.map((classItem, index) => (
@@ -325,7 +393,6 @@ const TeacherAttendance = () => {
                 <div className="bg-gray-50 rounded-lg p-6">
                   <h2 className="text-xl font-semibold mb-4">Live Attendance Status</h2>
                   
-                  {/* Statistics */}
                   {attendanceList.stats && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                       <div className="bg-white p-3 rounded-lg border">
@@ -348,7 +415,6 @@ const TeacherAttendance = () => {
                   )}
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Present Students */}
                     <div>
                       <h3 className="font-semibold text-green-600 mb-3">Present Students</h3>
                       <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -375,8 +441,6 @@ const TeacherAttendance = () => {
                         )}
                       </div>
                     </div>
-
-                    {/* Absent/Not Marked Students */}
                     <div>
                       <h3 className="font-semibold text-red-600 mb-3">Absent/Not Marked Students</h3>
                       <div className="space-y-2 max-h-64 overflow-y-auto">

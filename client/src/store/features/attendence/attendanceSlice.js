@@ -8,6 +8,8 @@ const initialState = {
   stats: null,
   loading: false,
   error: null,
+  locationVerified: false,
+  verifiedClassInfo: null,
 };
 
 // Async thunks
@@ -23,14 +25,14 @@ export const markAttendanceQR = createAsyncThunk(
   }
 );
 
-export const markAttendanceLocation = createAsyncThunk(
-  'attendance/markLocation',
+export const verifyLocation = createAsyncThunk(
+  'attendance/verifyLocation',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await attendanceAPI.markAttendanceLocation(data);
+      const response = await attendanceAPI.verifyLocation(data);
       return response;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to mark attendance');
+      return rejectWithValue(error.response?.data?.message || 'Location verification failed');
     }
   }
 );
@@ -106,6 +108,10 @@ const attendanceSlice = createSlice({
       state.attendanceList = [];
       state.currentAttendance = null;
     },
+    resetLocationVerification: (state) => {
+      state.locationVerified = false;
+      state.verifiedClassInfo = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -122,18 +128,21 @@ const attendanceSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Mark Location
-      .addCase(markAttendanceLocation.pending, (state) => {
+      // Verify Location (Stage 1)
+      .addCase(verifyLocation.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(markAttendanceLocation.fulfilled, (state, action) => {
+      .addCase(verifyLocation.fulfilled, (state, action) => {
         state.loading = false;
-        state.currentAttendance = action.payload.data;
+        state.locationVerified = true;
+        state.verifiedClassInfo = action.payload.data;
       })
-      .addCase(markAttendanceLocation.rejected, (state, action) => {
+      .addCase(verifyLocation.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        state.locationVerified = false;
+        state.verifiedClassInfo = null;
       })
       // Fetch student attendance
       .addCase(fetchStudentAttendance.pending, (state) => {
@@ -203,5 +212,5 @@ const attendanceSlice = createSlice({
   },
 });
 
-export const { clearError, clearAttendance } = attendanceSlice.actions;
+export const { clearError, clearAttendance, resetLocationVerification } = attendanceSlice.actions;
 export default attendanceSlice.reducer;

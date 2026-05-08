@@ -1,7 +1,7 @@
 import express from "express";
 import {
   markAttendanceByQR,
-  markAttendanceByLocation,
+  verifyStudentLocation,
   getStudentAttendance,
   getClassAttendance,
   generateQRData,
@@ -9,6 +9,9 @@ import {
   markBulkManualAttendance,
   getAttendanceHistory,
   getTodayClasses,
+  updateTeacherLocation,
+  stopTeacherLocation,
+  getTeacherLocationStatus,
 } from "../controllers/attendance.controller.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/auth.middleware.js";
 
@@ -19,12 +22,15 @@ router.use(isAuthenticated);
 
 // Student routes
 router.post("/qr", isAuthorized("Student"), markAttendanceByQR);
-router.post("/location", isAuthorized("Student"), markAttendanceByLocation);
+router.post("/verify-location", isAuthorized("Student"), verifyStudentLocation);
 router.get("/student/my-attendance", isAuthorized("Student"), getStudentAttendance);
 router.get("/student/today-classes", isAuthorized("Student"), getTodayClasses);
 
 // Teacher routes
 router.post("/qr/generate", isAuthorized("Teacher"), generateQRData);
+router.post("/teacher/location", isAuthorized("Teacher"), updateTeacherLocation);
+router.post("/teacher/location/stop", isAuthorized("Teacher"), stopTeacherLocation);
+router.get("/teacher/location/:teacherId", getTeacherLocationStatus);
 router.get("/class", isAuthorized("Teacher", "Admin"), getClassAttendance);
 
 // Manual attendance routes (Admin/Teacher)

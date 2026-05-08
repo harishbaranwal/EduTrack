@@ -97,6 +97,23 @@ export const addStudentsToBatch = async (batchId, studentIds) => {
     throw new Error("Some users are not students or do not exist");
   }
 
+  // Check if any student is already assigned to another batch
+  const alreadyAssigned = students.filter(
+    (s) => s.batch && s.batch.toString() !== batchId.toString()
+  );
+  if (alreadyAssigned.length > 0) {
+    // Get batch names for better error message
+    const assignedBatchIds = [...new Set(alreadyAssigned.map(s => s.batch.toString()))];
+    const assignedBatches = await Batch.find({ _id: { $in: assignedBatchIds } }).select('name');
+    const batchMap = {};
+    assignedBatches.forEach(b => { batchMap[b._id.toString()] = b.name; });
+    
+    const details = alreadyAssigned
+      .map(s => `"${s.name}" is already in batch "${batchMap[s.batch.toString()] || 'Unknown'}"`)
+      .join(', ');
+    throw new Error(`Cannot enroll: ${details}. Remove them from their current batch first.`);
+  }
+
   // Check capacity
   const newTotal = batch.students.length + studentIds.length;
   if (newTotal > batch.capacity) {

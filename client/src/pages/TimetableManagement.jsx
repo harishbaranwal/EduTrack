@@ -188,7 +188,10 @@ const TimetableManagement = () => {
         setError(data.message || 'Failed to save timetable');
       }
     } catch (err) {
-      setError('Failed to save timetable');} finally {
+      const serverMsg = err.response?.data?.message || err.message || 'Failed to save timetable';
+      setError(serverMsg);
+      showToast.error(serverMsg);
+    } finally {
       setLoading(false);
     }
   };
