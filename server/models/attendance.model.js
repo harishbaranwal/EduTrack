@@ -66,6 +66,15 @@ const attendanceSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Device identifier used to bind attendance to a specific device
+    deviceId: {
+      type: String,
+      index: true,
+    },
+    // Short-lived QR token that was presented by the student (for audit)
+    qrToken: {
+      type: String,
+    },
 
     markedAt: {
       type: Date,

@@ -16,14 +16,8 @@ import chatbotRouter from "./routes/chatbot.routes.js";
 export const app = express();
 
 /* ================= CORS FIRST ================= */
-<<<<<<< HEAD
-
-const corsOptions = {
-  // Reflect request origin so credentials/cookies can still be used across origins.
-  origin: true,
-  credentials: true,
-=======
-
+// Allow all origins during development for easier testing across devices.
+// In production, restrict to a whitelist.
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -32,27 +26,20 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("Blocked by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
+    if (process.env.NODE_ENV === 'development') {
+      // allow requests with no origin (e.g., curl, mobile apps)
+      return callback(null, true);
     }
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    console.log("Blocked by CORS:", origin);
+    return callback(new Error("Not allowed by CORS"));
   },
-
-  credentials: true
->>>>>>> 3279b76c5c3c13483473fd7aa54359c249daaaed
+  credentials: true,
 };
 
 app.use(cors(corsOptions));
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 3279b76c5c3c13483473fd7aa54359c249daaaed
 /* ================= OTHER MIDDLEWARE ================= */
 
 app.use(cookieParser());
