@@ -49,36 +49,63 @@ const TeacherAttendance = () => {
     }
 
     try {
-      // Extract batchId - handle both object and string cases
-      const batchId = typeof currentClass.batch === 'object' 
-        ? currentClass.batch._id 
-        : currentClass.batch;
+      // Get teacher's current location
+      return new Promise((resolve) => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const { latitude, longitude } = position.coords;
+              
+              // Extract batchId - handle both object and string cases
+              const batchId = typeof currentClass.batch === 'object' 
+                ? currentClass.batch._id 
+                : currentClass.batch;
 
-      const response = await API.post('/attendance/qr/generate', {
-        batchId: batchId,
-        subject: currentClass.subject
-      });
+              try {
+                const response = await API.post('/attendance/qr/generate', {
+                  batchId: batchId,
+                  subject: currentClass.subject,
+                  latitude: latitude,
+                  longitude: longitude
+                });
 
-      if (response.data.success) {
-        const tokenData = response.data.data?.qrData;
-        if (!tokenData || tokenData.trim() === '') {
-          toast.error('Server returned empty QR token. Please try again.');
-          return;
+                if (response.data.success) {
+                  const tokenData = response.data.data?.qrData;
+                  if (!tokenData || tokenData.trim() === '') {
+                    toast.error('Server returned empty QR token. Please try again.');
+                    resolve();
+                    return;
+                  }
+                  setQrData(tokenData);
+                  toast.success('QR code generated successfully!');
+                  // Start polling for attendance updates
+                  startPollingAttendance();
+                  // Start rotating QR every 30s
+                  if (qrIntervalId) clearInterval(qrIntervalId);
+                  const id = setInterval(() => generateQR(), 30000);
+                  setQrIntervalId(id);
+                } else {
+                  toast.error(response.data.message || 'Failed to generate QR');
+                }
+                resolve();
+              } catch (err) {
+                const errorMsg = err.response?.data?.message || 'Failed to generate QR code';
+                toast.error(errorMsg);
+                resolve();
+              }
+            },
+            (error) => {
+              toast.error('Could not get your location. Please enable location access and try again.');
+              resolve();
+            }
+          );
+        } else {
+          toast.error('Geolocation is not supported by your browser');
+          resolve();
         }
-        setQrData(tokenData);
-        toast.success('QR code generated successfully!');
-        // Start polling for attendance updates
-        startPollingAttendance();
-        // Start rotating QR every 30s
-        if (qrIntervalId) clearInterval(qrIntervalId);
-        const id = setInterval(() => generateQR(), 30000);
-        setQrIntervalId(id);
-      } else {
-        toast.error(response.data.message || 'Failed to generate QR');
-      }
+      });
     } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Failed to generate QR code';
-      toast.error(errorMsg);
+      console.error('Error:', err);
     }
   };
 

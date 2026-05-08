@@ -145,7 +145,7 @@ export const markAttendanceByQR = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid or expired QR code. Please ask your teacher to generate a new one.' });
     }
 
-    const { timetableId, subject, teacherId, date, startTime, endTime, batchId } = qrInfo;
+    const { timetableId, subject, teacherId, date, startTime, endTime, batchId, teacherLatitude, teacherLongitude } = qrInfo;
 
     // Verify student belongs to this batch
     const batch = await Batch.findById(batchId);
@@ -156,19 +156,39 @@ export const markAttendanceByQR = async (req, res) => {
       });
     }
 
-    const distance = calculateDistance(
+    // Check distance from campus
+    const distanceFromCampus = calculateDistance(
       parseFloat(latitude),
       parseFloat(longitude),
       CAMPUS_LOCATION.latitude,
       CAMPUS_LOCATION.longitude
     );
 
-    if (distance > ALLOWED_RADIUS) {
+    if (distanceFromCampus > ALLOWED_RADIUS) {
       return res.status(400).json({
         success: false,
-        message: `You are ${distance.toFixed(0)}m away from campus. You must be within ${ALLOWED_RADIUS}m to mark attendance.`,
-        data: { distance, allowedRadius: ALLOWED_RADIUS },
+        message: `You are ${distanceFromCampus.toFixed(0)}m away from campus. You must be within ${ALLOWED_RADIUS}m to mark attendance.`,
+        data: { distance: distanceFromCampus, allowedRadius: ALLOWED_RADIUS },
       });
+    }
+
+    // Check distance from teacher (must be within 50m of teacher location)
+    if (teacherLatitude != null && teacherLongitude != null) {
+      const distanceFromTeacher = calculateDistance(
+        parseFloat(latitude),
+        parseFloat(longitude),
+        teacherLatitude,
+        teacherLongitude
+      );
+
+      const TEACHER_RADIUS = 50; // 50 meters
+      if (distanceFromTeacher > TEACHER_RADIUS) {
+        return res.status(400).json({
+          success: false,
+          message: `You are ${distanceFromTeacher.toFixed(0)}m away from your teacher. You must be within ${TEACHER_RADIUS}m to mark attendance.`,
+          data: { distance: distanceFromTeacher, allowedRadius: TEACHER_RADIUS },
+        });
+      }
     }
 
     // Check if attendance already exists
@@ -202,7 +222,7 @@ export const markAttendanceByQR = async (req, res) => {
         type: "Point",
         coordinates: [parseFloat(longitude), parseFloat(latitude)],
       },
-      distanceFromCampus: distance,
+      distanceFromCampus: distanceFromCampus,
       deviceId,
       qrToken: resolvedToken || null,
     };
@@ -490,13 +510,20 @@ const generateQRCode = () => {
 
 export const generateQRData = async (req, res) => {
   try {
-    const { batchId, subject } = req.body;
+    const { batchId, subject, latitude, longitude } = req.body;
     const teacherId = req.user.id;
 
     if (!batchId || !subject) {
       return res.status(400).json({
         success: false,
         message: "Batch ID and subject are required",
+      });
+    }
+
+    if (latitude == null || longitude == null) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher location is required to generate QR code",
       });
     }
 
@@ -511,7 +538,7 @@ export const generateQRData = async (req, res) => {
       });
     }
     
-    // Generate a short QR code and store the full payload
+    // Generate a short QR code and store the full payload with teacher location
     const qrCode = generateQRCode();
     const qrPayload = {
       timetableId: validation.timetable._id,
@@ -521,6 +548,8 @@ export const generateQRData = async (req, res) => {
       startTime: validation.classInfo.startTime,
       endTime: validation.classInfo.endTime,
       batchId: batchId,
+      teacherLatitude: parseFloat(latitude),
+      teacherLongitude: parseFloat(longitude),
       iat: Math.floor(Date.now() / 1000),
     };
 

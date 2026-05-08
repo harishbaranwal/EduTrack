@@ -135,10 +135,11 @@ const Attendance = () => {
       setQrData(qrData);
       setShowQRScanner(false);
 
+      // Auto-submit attendance immediately when QR is scanned
       if (location) {
         await submitCombinedAttendance(qrData, location);
       } else {
-        showToast.success('QR code captured. Now capture your location to complete attendance.');
+        showToast.error('Please capture your location first');
       }
     } catch {
       showToast.error('Failed to mark attendance');
@@ -231,41 +232,33 @@ const Attendance = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  <div className="grid grid-cols-1 gap-3 mt-4">
                     <button
                       onClick={getLocation}
                       disabled={locationLoading || submittingAttendance}
-                      className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                      className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
                     >
+                      <MapPin className="w-5 h-5" />
                       {locationLoading ? 'Getting Location...' : location ? '✓ Location Captured' : 'Capture Location'}
                     </button>
-                    <button
-                      onClick={() => {
-                        if (!location) {
-                          showToast.error('Please capture your location first');
-                          return;
-                        }
-                        setShowQRScanner(true);
-                      }}
-                      disabled={submittingAttendance || !location}
-                      className={`w-full py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center gap-2 ${!location ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                    >
-                      <QrCode className="w-5 h-5" />
-                      {qrData ? 'Rescan QR Code' : 'Scan QR Code'}
-                    </button>
+                    
+                    {location && (
+                      <button
+                        onClick={() => setShowQRScanner(true)}
+                        disabled={submittingAttendance}
+                        className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                      >
+                        <QrCode className="w-5 h-5" />
+                        {qrData ? 'Rescan QR Code' : 'Scan QR Code'}
+                      </button>
+                    )}
                   </div>
 
-                  <button
-                    onClick={() => submitCombinedAttendance()}
-                    disabled={!qrData || !location || submittingAttendance}
-                    className="w-full mt-4 bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                  >
-                    {submittingAttendance ? 'Marking Attendance...' : 'Mark Attendance'}
-                  </button>
-
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-sm text-green-700">
-                      Once both QR and location are captured, your attendance will be verified together.
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      <span>📍 Step 1:</span> Capture your location<br />
+                      <span>📱 Step 2:</span> Scan the QR code shown by your teacher<br />
+                      Attendance will be marked automatically once verified.
                     </p>
                   </div>
 
