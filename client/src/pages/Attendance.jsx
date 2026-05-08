@@ -149,6 +149,30 @@ const Attendance = () => {
     }
   };
 
+  // Helper to check if a class is active right now (from 10 mins before start to the end time)
+  const isClassCurrent = (classItem) => {
+    if (!classItem.startTime || !classItem.endTime) return false;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    
+    // Support parsing formats like "10:00" or "10:00 AM"
+    const parseTime = (timeStr) => {
+      let [time, modifier] = timeStr.split(' ');
+      let [hours, minutes] = time.split(':').map(Number);
+      if (modifier === 'PM' && hours < 12) hours += 12;
+      if (modifier === 'AM' && hours === 12) hours = 0;
+      return hours * 60 + minutes;
+    };
+
+    const startMins = parseTime(classItem.startTime);
+    const endMins = parseTime(classItem.endTime);
+    
+    return currentMins >= (startMins - 10) && currentMins <= endMins;
+  };
+
+  const currentClasses = todayClasses.filter(isClassCurrent);
+  const otherClasses = todayClasses.filter(c => !isClassCurrent(c));
+
   if (loading) return <Loader />;
 
   return (
@@ -266,37 +290,70 @@ const Attendance = () => {
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Today's Classes</h3>
                   {todayClasses.length > 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {todayClasses.map((classItem, index) => (
-                        <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                          <div className="flex justify-between items-start gap-3 mb-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{classItem.subject}</h4>
-                              <p className="text-xs sm:text-sm text-gray-600">{classItem.teacher?.name || 'Teacher TBA'}</p>
-                            </div>
-                            <div className="text-right text-xs sm:text-sm text-gray-500">
-                              <div>{classItem.startTime} - {classItem.endTime}</div>
-                              {classItem.classroom && <div>{classItem.classroom}</div>}
-                            </div>
+                    <div className="space-y-6">
+                      {/* Current Active Classes */}
+                      {currentClasses.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-indigo-700 uppercase tracking-wider mb-3">Current / Upcoming Class</h4>
+                          <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2">
+                            {currentClasses.map((classItem, index) => (
+                              <div key={`current-${index}`} className="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50">
+                                <div className="flex justify-between items-start gap-3 mb-3">
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{classItem.subject}</h4>
+                                    <p className="text-xs sm:text-sm text-gray-600">{classItem.teacher?.name || 'Teacher TBA'}</p>
+                                  </div>
+                                  <div className="text-right text-xs sm:text-sm text-gray-500">
+                                    <div>{classItem.startTime} - {classItem.endTime}</div>
+                                    {classItem.classroom && <div>{classItem.classroom}</div>}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleVerifyLocation(classItem)}
+                                  disabled={locationLoading || locationVerified}
+                                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                                    locationVerified && selectedClass?.subject === classItem.subject
+                                      ? 'bg-green-100 text-green-700 cursor-default'
+                                      : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+                                  }`}
+                                >
+                                  <MapPin className="w-4 h-4" />
+                                  {locationLoading && selectedClass?.subject === classItem.subject
+                                    ? 'Verifying...'
+                                    : locationVerified && selectedClass?.subject === classItem.subject
+                                    ? '✓ Location Verified'
+                                    : 'Verify Location for This Class'}
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                          <button
-                            onClick={() => handleVerifyLocation(classItem)}
-                            disabled={locationLoading || locationVerified}
-                            className={`w-full py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                              locationVerified && selectedClass?.subject === classItem.subject
-                                ? 'bg-green-100 text-green-700 cursor-default'
-                                : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
-                            }`}
-                          >
-                            <MapPin className="w-4 h-4" />
-                            {locationLoading && selectedClass?.subject === classItem.subject
-                              ? 'Verifying...'
-                              : locationVerified && selectedClass?.subject === classItem.subject
-                              ? '✓ Location Verified'
-                              : 'Verify Location for This Class'}
-                          </button>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Other Classes */}
+                      {otherClasses.length > 0 && (
+                        <div>
+                          {currentClasses.length > 0 && (
+                            <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Other Classes Today</h4>
+                          )}
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {otherClasses.map((classItem, index) => (
+                              <div key={`other-${index}`} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                <div className="flex justify-between items-start gap-3">
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{classItem.subject}</h4>
+                                    <p className="text-xs sm:text-sm text-gray-600">{classItem.teacher?.name || 'Teacher TBA'}</p>
+                                  </div>
+                                  <div className="text-right text-xs sm:text-sm text-gray-500">
+                                    <div>{classItem.startTime} - {classItem.endTime}</div>
+                                    {classItem.classroom && <div>{classItem.classroom}</div>}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8">

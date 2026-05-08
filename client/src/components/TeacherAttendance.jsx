@@ -20,6 +20,24 @@ const TeacherAttendance = () => {
   const [locationWatchId, setLocationWatchId] = useState(null);
   const lastPresentRef = useRef(null);
 
+  // Helper to check if we are within the first 20 minutes of class
+  const isWithinQRWindow = () => {
+    if (!currentClass || !currentClass.startTime) return false;
+    
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    
+    let timeParts = currentClass.startTime.split(' ');
+    let [hours, minutes] = timeParts[0].split(':').map(Number);
+    if (timeParts[1] === 'PM' && hours < 12) hours += 12;
+    if (timeParts[1] === 'AM' && hours === 12) hours = 0;
+    
+    const startMins = hours * 60 + minutes;
+    
+    // Allowed from 15 mins before start up to 20 mins after start
+    return currentMins >= (startMins - 15) && currentMins <= (startMins + 20);
+  };
+
   // Check for current class
   const checkCurrentClass = async () => {
     try {
@@ -324,13 +342,25 @@ const TeacherAttendance = () => {
                         </p>
                       </div>
 
-                      <button
-                        onClick={generateQR}
-                        className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200 flex items-center justify-center space-x-2"
-                      >
-                        <QrCode className="w-4 h-4" />
-                        <span>Generate QR Code for Attendance</span>
-                      </button>
+                      {!isWithinQRWindow() ? (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                          <p className="text-red-700 font-medium">QR generation window has closed.</p>
+                          <p className="text-sm text-red-600 mt-1">Please mark remaining students using the Manual Attendance tab.</p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={generateQR}
+                          disabled={!locationSharing}
+                          className={`w-full py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center space-x-2 text-white ${
+                            !locationSharing 
+                              ? 'bg-gray-400 cursor-not-allowed' 
+                              : 'bg-blue-500 hover:bg-blue-600'
+                          }`}
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span>{locationSharing ? 'Generate QR Code' : 'Start Location Sharing First'}</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="bg-gray-100 border border-gray-200 rounded-lg p-4">

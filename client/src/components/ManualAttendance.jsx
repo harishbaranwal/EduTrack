@@ -81,11 +81,19 @@ const ManualAttendance = () => {
 
       if (response.data.success) {
         const { classAttendance } = response.data.data;
-        setStudents(classAttendance);
+        
+        // Sort by registration number
+        const sortedAttendance = [...classAttendance].sort((a, b) => {
+          const regA = a.student.registrationNumber || '';
+          const regB = b.student.registrationNumber || '';
+          return regA.localeCompare(regB, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        setStudents(sortedAttendance);
 
         // Initialize attendance data
         const initialData = {};
-        classAttendance.forEach(item => {
+        sortedAttendance.forEach(item => {
           initialData[item.student._id] = {
             status: item.attendance?.status || 'Not Marked',
             isModified: false,
@@ -378,18 +386,25 @@ const ManualAttendance = () => {
                           )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <select
-                            value={currentAttendance.status || item.status || 'Not Marked'}
-                            onChange={(e) => handleInstantAttendanceUpdate(student._id, e.target.value)}
+                          <button
+                            onClick={() => {
+                              const current = currentAttendance.status || item.status || 'Not Marked';
+                              const nextStatus = current === 'Present' ? 'Absent' : 'Present';
+                              handleInstantAttendanceUpdate(student._id, nextStatus);
+                            }}
                             disabled={submitting}
-                            className={`w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
                               submitting ? 'opacity-50 cursor-not-allowed' : ''
+                            } ${
+                              (currentAttendance.status || item.status) === 'Present'
+                                ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
+                                : (currentAttendance.status || item.status) === 'Absent'
+                                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
+                                : 'bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-500'
                             }`}
                           >
-                            <option value="Not Marked">Not Marked</option>
-                            <option value="Present">Present</option>
-                            <option value="Absent">Absent</option>
-                          </select>
+                            {(currentAttendance.status || item.status) === 'Present' ? 'Mark Absent' : 'Mark Present'}
+                          </button>
                         </td>
                       </tr>
                     );

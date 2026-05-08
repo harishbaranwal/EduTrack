@@ -195,7 +195,7 @@ export const markAttendanceByQR = async (req, res) => {
       });
     }
 
-    // Check distance from teacher (must be within 50m of teacher location)
+    // Check distance from teacher
     if (teacherLatitude != null && teacherLongitude != null) {
       const distanceFromTeacher = calculateDistance(
         parseFloat(latitude),
@@ -204,11 +204,11 @@ export const markAttendanceByQR = async (req, res) => {
         teacherLongitude
       );
 
-      const TEACHER_RADIUS = 50; // 50 meters
+      const TEACHER_RADIUS = 500;
       if (distanceFromTeacher > TEACHER_RADIUS) {
         return res.status(400).json({
           success: false,
-          message: `You are ${distanceFromTeacher.toFixed(0)}m away from your teacher. You must be within ${TEACHER_RADIUS}m to mark attendance.`,
+          message: "Go to classroom, you are too faraway from class.",
           data: { distance: distanceFromTeacher, allowedRadius: TEACHER_RADIUS },
         });
       }
@@ -340,11 +340,11 @@ export const verifyStudentLocation = async (req, res) => {
       teacherLoc.latitude, teacherLoc.longitude
     );
 
-    const TEACHER_RADIUS = 50;
+    const TEACHER_RADIUS = 500;
     if (distanceFromTeacher > TEACHER_RADIUS) {
       return res.status(400).json({
         success: false,
-        message: `You are ${distanceFromTeacher.toFixed(0)}m away from your teacher. You must be within ${TEACHER_RADIUS}m to proceed to QR scanning.`,
+        message: "Go to classroom, you are too faraway from class.",
       });
     }
 
