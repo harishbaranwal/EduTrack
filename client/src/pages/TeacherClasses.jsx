@@ -278,10 +278,7 @@ const TeacherClasses = () => {
                   </div>
                 )}
 
-                <div className="flex items-center text-sm text-gray-600">
-                  <Users className="w-4 h-4 mr-2 shrink-0" />
-                  <span>{classItem.batch?.students?.length || 0} Students</span>
-                </div>
+            
               </div>
 
               <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-100">
