@@ -29,7 +29,13 @@ const StudentDashboard = () => {
         setLoading(true);
         setError('');
         setInfoMessage('');
-        
+        // If the authenticated user has no batch assigned, show assignment info immediately
+        if (user && !user.batch) {
+          setInfoMessage('Ask admin to assign a section/batch to your account.');
+          setLoading(false);
+          return;
+        }
+
         const response = await dashboardAPI.getStudentDashboard();
         if (response.success) {
           if (response.data?.assigned === false) {
@@ -49,14 +55,21 @@ const StudentDashboard = () => {
           setError(response.message || 'Failed to fetch dashboard data');
         }
       } catch (error) {
-        setError(error.response?.data?.message || 'Failed to fetch dashboard data');
+        const serverMessage = error.response?.data?.message || '';
+        // Treat missing/ unassigned student as informational state
+        if (/not assigned|student not found|not enrolled/i.test(serverMessage)) {
+          setInfoMessage('Once an admin assigns your section, your dashboard will appear here automatically.');
+          setLoading(false);
+          return;
+        }
+        setError(serverMessage || 'Failed to fetch dashboard data');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, []);
+  }, [user]);
 
   const StatCard = ({ title, value, icon, color, subtitle }) => (
     <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 border-l-4" style={{ borderLeftColor: color }}>
