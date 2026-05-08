@@ -21,15 +21,23 @@ const StudentDashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         setError('');
+        setInfoMessage('');
         
         const response = await dashboardAPI.getStudentDashboard();
         if (response.success) {
+          if (response.data?.assigned === false) {
+            setInfoMessage(response.data.message || 'Ask admin to assign a section/batch to your account.');
+            setLoading(false);
+            return;
+          }
+
           setStats(prevStats => ({
             ...prevStats,
             ...response.data,
@@ -92,6 +100,23 @@ const StudentDashboard = () => {
           >
             Retry
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (infoMessage) {
+    return (
+      <div className="p-3 sm:p-6">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-5 sm:p-6 text-center">
+          <div className="flex justify-center mb-3 sm:mb-4">
+            <div className="p-3 bg-green-100 rounded-full">
+              <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-green-600" />
+            </div>
+          </div>
+          <h2 className="text-lg sm:text-xl font-semibold text-green-800 mb-2">Welcome to EduTrack</h2>
+          <p className="text-green-700 text-sm sm:text-base mb-2">{infoMessage}</p>
+          <p className="text-green-600 text-sm sm:text-base">Once an admin assigns your section, your dashboard will appear here automatically.</p>
         </div>
       </div>
     );

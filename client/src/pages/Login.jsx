@@ -16,9 +16,17 @@ const Login = () => {
   const navigate = useNavigate();
   const { loading, error, isAuthenticated, user } = useSelector((state) => state.auth);
 
+  const getDashboardRoute = (role) => {
+    const normalizedRole = role?.toLowerCase();
+    if (normalizedRole === 'admin') return '/admin';
+    if (normalizedRole === 'teacher') return '/teacher';
+    if (normalizedRole === 'student') return '/student';
+    return '/home';
+  };
+
   useEffect(() => {
     if (isAuthenticated && user) {
-      navigate('/home');
+      navigate(getDashboardRoute(user.role), { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 

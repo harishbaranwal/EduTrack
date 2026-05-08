@@ -11,6 +11,7 @@ const TeacherAttendance = () => {
   const [activeTab, setActiveTab] = useState('qr');
   const [currentClass, setCurrentClass] = useState(null);
   const [qrData, setQrData] = useState('');
+  const [qrIntervalId, setQrIntervalId] = useState(null);
   const [todaySchedule, setTodaySchedule] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,6 +63,10 @@ const TeacherAttendance = () => {
         toast.success('QR code generated successfully!');
         // Start polling for attendance updates
         startPollingAttendance();
+        // Start rotating QR every 30s
+        if (qrIntervalId) clearInterval(qrIntervalId);
+        const id = setInterval(() => generateQR(), 30000);
+        setQrIntervalId(id);
       }
     } catch (err) {
       const errorMsg = err.response?.data?.message || 'Failed to generate QR code';
@@ -135,6 +140,13 @@ const TeacherAttendance = () => {
     
     return () => clearInterval(interval);
   }, []);
+
+  // Clear QR rotation interval when component unmounts
+  useEffect(() => {
+    return () => {
+      if (qrIntervalId) clearInterval(qrIntervalId);
+    };
+  }, [qrIntervalId]);
 
   if (loading) {
     return <Loader />;

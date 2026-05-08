@@ -14,7 +14,7 @@ const Hero = () => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
 
   const getDashboardRoute = () => {
-    if (!user) return "/dashboard";
+    if (!user) return "/login";
     switch (user.role) {
       case "Admin":
         return "/admin";

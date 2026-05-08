@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   markAttendanceQR, 
-  markAttendanceLocation, 
   fetchStudentAttendance, 
   fetchTodayClasses 
 } from '../store/features/attendence/attendanceSlice';
@@ -21,16 +20,29 @@ const Attendance = () => {
     user?.role === 'Student' ? 'mark' : 
     (user?.role === 'Teacher' || user?.role === 'Admin') ? 'manual' : 'history'
   );
-  const [attendanceMethod, setAttendanceMethod] = useState('qr'); // 'qr' or 'location'
   const [showQRScanner, setShowQRScanner] = useState(false);
-  
-  // Location-based state
-  const [selectedClass, setSelectedClass] = useState(null);
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [submittingAttendance, setSubmittingAttendance] = useState(false);
 
   const dispatch = useDispatch();
   const { attendanceList, todayClasses, loading } = useSelector((state) => state.attendance);
+
+  // Ensure a persistent deviceId exists for this browser/device
+  const getOrCreateDeviceId = () => {
+    const key = 'edutrack_device_id';
+    let id = localStorage.getItem(key);
+    if (!id) {
+      // simple UUID v4
+      id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+      localStorage.setItem(key, id);
+    }
+    return id;
+  };
 
   useEffect(() => {
     if (user?._id && user?.role === 'Student') {
@@ -50,6 +62,13 @@ const Attendance = () => {
           });
           setLocationLoading(false);
           showToast.success('Location captured successfully');
+
+          if (qrData) {
+            submitCombinedAttendance(qrData, {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            });
+          }
         },
         (error) => {
           setLocationLoading(false);
@@ -62,49 +81,54 @@ const Attendance = () => {
     }
   };
 
-  const handleQRSuccess = async (qrData) => {
+  const submitCombinedAttendance = async (capturedQrData = qrData, capturedLocation = location) => {
+    if (!capturedQrData) {
+      showToast.error('Please scan the QR code first');
+      return;
+    }
+
+    if (!capturedLocation) {
+      showToast.error('Please capture your location first');
+      return;
+    }
+
     try {
-      const attendanceData = { qrData };
-      
+      setSubmittingAttendance(true);
+      const attendanceData = {
+        qrToken: capturedQrData,
+        latitude: capturedLocation.latitude,
+        longitude: capturedLocation.longitude,
+        deviceId: getOrCreateDeviceId(),
+      };
+
       const result = await dispatch(markAttendanceQR(attendanceData));
       if (result.type.includes('fulfilled')) {
-        showToast.success('Attendance marked successfully via QR scan');
+        showToast.success(result.payload?.message || 'Attendance marked successfully using QR and location');
         setShowQRScanner(false);
-        // Refresh data
+        setQrData(null);
+        setLocation(null);
         dispatch(fetchStudentAttendance({}));
         dispatch(fetchTodayClasses());
       }
     } catch {
       showToast.error('Failed to mark attendance');
+    } finally {
+      setSubmittingAttendance(false);
     }
   };
 
-  const handleLocationAttendance = async () => {
-    if (!selectedClass) {
-      showToast.error('Please select a class');
-      return;
-    }
-    
-    if (!location) {
-      showToast.error('Please capture your location first');
-      return;
-    }
+  const handleQRSuccess = async (qrData) => {
+    try {
+      setQrData(qrData);
+      setShowQRScanner(false);
 
-    const attendanceData = {
-      subject: selectedClass.subject,
-      batchId: user.batch._id, // Assuming user has batch info
-      date: new Date().toISOString().split('T')[0],
-      location: location,
-    };
-
-    const result = await dispatch(markAttendanceLocation(attendanceData));
-    if (result.type.includes('fulfilled')) {
-      showToast.success('Attendance marked successfully using location');
-      setSelectedClass(null);
-      setLocation(null);
-      // Refresh data
-      dispatch(fetchStudentAttendance({}));
-      dispatch(fetchTodayClasses());
+      if (location) {
+        await submitCombinedAttendance(qrData, location);
+      } else {
+        showToast.success('QR code captured. Now capture your location to complete attendance.');
+      }
+    } catch {
+      showToast.error('Failed to mark attendance');
     }
   };
 
@@ -169,165 +193,90 @@ const Attendance = () => {
 
           <div className="p-3 sm:p-4 lg:p-6">
             {activeTab === 'mark' && user?.role === 'Student' && (
-              <div className="max-w-4xl mx-auto">
-                {/* Method Selection */}
-                <div className="mb-4 sm:mb-6">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">
-                    Choose Attendance Method
+              <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 border border-gray-100">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    Mark Attendance with QR + Location
                   </h3>
-                  <div className="grid grid-cols-1 gap-3 sm:gap-4">
-                    {/* QR Code Method */}
-                    <div 
-                      onClick={() => setAttendanceMethod('qr')}
-                      className={`p-3 sm:p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                        attendanceMethod === 'qr'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <QrCode className={`w-6 h-6 sm:w-8 sm:h-8 ${attendanceMethod === 'qr' ? 'text-blue-600' : 'text-gray-400'}`} />
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm sm:text-base text-gray-800">QR Code Scan</h4>
-                          <p className="text-xs sm:text-sm text-gray-600">Scan QR code displayed by teacher</p>
-                        </div>
-                      </div>
-                    </div>
+                  <p className="text-sm sm:text-base text-gray-600">
+                    Both checks are required. Capture your location and scan the class QR code, then submit.
+                  </p>
 
-                    {/* Location Method */}
-                    <div 
-                      onClick={() => setAttendanceMethod('location')}
-                      className={`p-3 sm:p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                        attendanceMethod === 'location'
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <MapPin className={`w-6 h-6 sm:w-8 sm:h-8 ${attendanceMethod === 'location' ? 'text-green-600' : 'text-gray-400'}`} />
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm sm:text-base text-gray-800">Location Based</h4>
-                          <p className="text-xs sm:text-sm text-gray-600">Mark attendance using your location</p>
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    <div className={`rounded-lg border p-4 ${qrData ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <h4 className="font-medium text-gray-800 text-sm sm:text-base mb-1">QR Code</h4>
+                      <p className="text-xs sm:text-sm text-gray-600">
+                        {qrData ? 'QR code captured successfully.' : 'Scan the QR code shown by your teacher.'}
+                      </p>
                     </div>
-                  </div>
-                </div>
-
-                {/* QR Code Section */}
-                {attendanceMethod === 'qr' && (
-                  <div className="bg-blue-50 rounded-lg p-4 sm:p-6">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4 flex items-center">
-                      <QrCode className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-blue-600" />
-                      QR Code Attendance
-                    </h3>
-                    
-                    <div className="text-center">
-                      <button
-                        onClick={() => setShowQRScanner(true)}
-                        className="bg-blue-600 text-white py-3 sm:py-4 px-6 sm:px-8 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center space-x-2 mx-auto text-sm sm:text-base w-full sm:w-auto"
-                      >
-                        <QrCode size={20} className="sm:w-6 sm:h-6" />
-                        <span>Open QR Scanner</span>
-                      </button>
-                      <p className="text-sm text-gray-600 mt-4">
-                        Ask your teacher to display the QR code and scan it to mark your attendance
+                    <div className={`rounded-lg border p-4 ${location ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <h4 className="font-medium text-gray-800 text-sm sm:text-base mb-1">Location</h4>
+                      <p className="text-xs sm:text-sm text-gray-600">
+                        {location ? `Captured at ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'Capture your current location to verify campus presence.'}
                       </p>
                     </div>
                   </div>
-                )}
 
-                {/* Location Section */}
-                {attendanceMethod === 'location' && (
-                  <div className="bg-green-50 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                      <MapPin className="w-6 h-6 mr-2 text-green-600" />
-                      Location-Based Attendance
-                    </h3>
-
-                    {/* Today's Classes */}
-                    <div className="mb-6">
-                      <h4 className="font-medium text-gray-700 mb-3">Select a class for today:</h4>
-                      {todayClasses.length > 0 ? (
-                        <div className="grid gap-3">
-                          {todayClasses.map((classItem, index) => (
-                            <div
-                              key={index}
-                              onClick={() => setSelectedClass(classItem)}
-                              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                                selectedClass?.subject === classItem.subject
-                                  ? 'border-green-500 bg-white'
-                                  : 'border-gray-200 hover:border-gray-300 bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                  <BookOpen className="w-5 h-5 text-gray-400" />
-                                  <div>
-                                    <h5 className="font-medium text-gray-800">{classItem.subject}</h5>
-                                    <p className="text-sm text-gray-600">
-                                      {classItem.teacher?.name || 'Teacher TBA'}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="flex items-center text-sm text-gray-500">
-                                    <Clock className="w-4 h-4 mr-1" />
-                                    {classItem.startTime} - {classItem.endTime}
-                                  </div>
-                                  {classItem.classroom && (
-                                    <p className="text-xs text-gray-400">{classItem.classroom}</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8">
-                          <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-2" />
-                          <p className="text-gray-500">No classes available for attendance today</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Location and Submit */}
-                    {selectedClass && (
-                      <div className="border-t pt-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm font-medium text-gray-700">Current Location:</span>
-                          <button
-                            onClick={getLocation}
-                            disabled={locationLoading}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              location
-                                ? 'bg-green-100 text-green-700 border border-green-300'
-                                : 'bg-gray-600 text-white hover:bg-gray-700'
-                            }`}
-                          >
-                            {locationLoading ? 'Getting Location...' : location ? '✓ Location Captured' : 'Capture Location'}
-                          </button>
-                        </div>
-
-                        {location && (
-                          <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded-lg text-sm">
-                            <p className="text-green-800">
-                              📍 Latitude: {location.latitude.toFixed(6)}, Longitude: {location.longitude.toFixed(6)}
-                            </p>
-                          </div>
-                        )}
-
-                        <button
-                          onClick={handleLocationAttendance}
-                          disabled={!location || loading}
-                          className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 font-medium"
-                        >
-                          {loading ? 'Marking Attendance...' : 'Mark Attendance'}
-                        </button>
-                      </div>
-                    )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    <button
+                      onClick={getLocation}
+                      disabled={locationLoading || submittingAttendance}
+                      className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {locationLoading ? 'Getting Location...' : location ? '✓ Location Captured' : 'Capture Location'}
+                    </button>
+                    <button
+                      onClick={() => setShowQRScanner(true)}
+                      disabled={submittingAttendance}
+                      className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                    >
+                      <QrCode className="w-5 h-5" />
+                      {qrData ? 'Rescan QR Code' : 'Scan QR Code'}
+                    </button>
                   </div>
-                )}
+
+                  <button
+                    onClick={() => submitCombinedAttendance()}
+                    disabled={!qrData || !location || submittingAttendance}
+                    className="w-full mt-4 bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {submittingAttendance ? 'Marking Attendance...' : 'Mark Attendance'}
+                  </button>
+
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-700">
+                      Once both QR and location are captured, your attendance will be verified together.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Today's Classes</h3>
+                  {todayClasses.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {todayClasses.map((classItem, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 text-sm sm:text-base">{classItem.subject}</h4>
+                              <p className="text-xs sm:text-sm text-gray-600">{classItem.teacher?.name || 'Teacher TBA'}</p>
+                            </div>
+                            <div className="text-right text-xs sm:text-sm text-gray-500">
+                              <div>{classItem.startTime} - {classItem.endTime}</div>
+                              {classItem.classroom && <div>{classItem.classroom}</div>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-2" />
+                      <p className="text-gray-500">No classes available for attendance today</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -379,10 +328,12 @@ const Attendance = () => {
                               <span className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
                                 attendance.method === 'QR_Scan' ? 'bg-blue-100 text-blue-800' :
                                 attendance.method === 'Location' ? 'bg-green-100 text-green-800' :
+                                attendance.method === 'QR_Scan+Location' ? 'bg-purple-100 text-purple-800' :
                                 'bg-gray-100 text-gray-800'
                               }`}>
                                 {attendance.method === 'QR_Scan' ? '📱 QR Scan' : 
-                                 attendance.method === 'Location' ? '📍 Location' : attendance.method}
+                                 attendance.method === 'Location' ? '📍 Location' : 
+                                 attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
                               </span>
                             </td>
                           </tr>
@@ -419,10 +370,12 @@ const Attendance = () => {
                               <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                                 attendance.method === 'QR_Scan' ? 'bg-blue-100 text-blue-800' :
                                 attendance.method === 'Location' ? 'bg-green-100 text-green-800' :
+                                attendance.method === 'QR_Scan+Location' ? 'bg-purple-100 text-purple-800' :
                                 'bg-gray-100 text-gray-800'
                               }`}>
                                 {attendance.method === 'QR_Scan' ? '📱 QR Scan' : 
-                                 attendance.method === 'Location' ? '📍 Location' : attendance.method}
+                                 attendance.method === 'Location' ? '📍 Location' : 
+                                 attendance.method === 'QR_Scan+Location' ? '📱 QR + 📍 Location' : attendance.method}
                               </span>
                             </div>
                           </div>

@@ -281,7 +281,6 @@ export const getTeacherDashboardStats = async (teacherId) => {
 // Get student dashboard statistics
 
 export const getStudentDashboardStats = async (studentId) => {
-  const today = getISTDateString();
   const currentDay = getISTDayName();
   const { startOfDay, endOfDay } = getISTDayBounds();
 
@@ -289,24 +288,36 @@ export const getStudentDashboardStats = async (studentId) => {
   const student = await User.findById(studentId).populate("batch", "name department year");
 
   if (!student || !student.batch) {
-    throw new Error("Student not found or not assigned to a batch");
+    return {
+      assigned: false,
+      message: "Ask admin to assign a section/batch to your account.",
+      attendance: { percentage: 0, total: 0, present: 0, absent: 0 },
+      sessions: { total: 0, attended: 0, missed: 0 },
+      batch: { name: "", currentSemester: "" },
+      upcomingClasses: [],
+      thisWeekAttendance: [],
+      recommendations: { pending: 0, list: [] },
+      recentNotifications: [],
+      notifications: { unread: 0, recent: [] },
+    };
   }
 
   // Today's schedule
   const todayTimetable = await Timetable.findOne({
     batch: student.batch._id,
     day: currentDay,
-  }).populate('classes.teacher', 'name');
+  }).populate("classes.teacher", "name");
 
-  const todayClasses = todayTimetable ? 
-    todayTimetable.classes.map((classItem, index) => ({
-      id: `${todayTimetable._id}-${index}`,
-      subject: classItem.subject,
-      teacher: classItem.teacher?.name || 'TBD',
-      startTime: classItem.startTime,
-      endTime: classItem.endTime,
-      room: classItem.room || 'TBD'
-    })) : [];
+  const todayClasses = todayTimetable
+    ? todayTimetable.classes.map((classItem, index) => ({
+        id: `${todayTimetable._id}-${index}`,
+        subject: classItem.subject,
+        teacher: classItem.teacher?.name || "TBD",
+        startTime: classItem.startTime,
+        endTime: classItem.endTime,
+        room: classItem.room || "TBD",
+      }))
+    : [];
 
   // Attendance statistics (last 30 days)
   const thirtyDaysAgo = new Date();
@@ -322,55 +333,32 @@ export const getStudentDashboardStats = async (studentId) => {
   const attendancePercentage = totalClasses > 0 ? ((presentCount / totalClasses) * 100).toFixed(2) : 0;
 
   // This week's attendance (last 7 days using IST)
-  const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const weekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const thisWeekAttendance = [];
 
   for (let i = 0; i < 7; i++) {
-    // Calculate IST date for each day
     const istDate = new Date();
     istDate.setDate(istDate.getDate() - i);
     const dateString = getISTDateString(istDate);
-    
+
     const dayDate = new Date(dateString);
     const dayName = weekDays[dayDate.getDay() === 0 ? 6 : dayDate.getDay() - 1];
-    
+
     const dayAttendance = await Attendance.findOne({
       user: studentId,
       markedAt: {
-        $gte: new Date(dateString + 'T00:00:00.000Z'),
-        $lt: new Date(dateString + 'T23:59:59.999Z')
-      }
+        $gte: new Date(dateString + "T00:00:00.000Z"),
+        $lt: new Date(dateString + "T23:59:59.999Z"),
+      },
     });
 
     thisWeekAttendance.unshift({
       day: dayName.substr(0, 3),
       date: dayDate.getDate(),
-      status: dayAttendance?.status || 'Absent',
-      isToday: i === 0
+      status: dayAttendance?.status || "Absent",
+      isToday: i === 0,
     });
   }
-
-  // Attendance trend (last 30 days)
-  const attendanceTrend = await Attendance.aggregate([
-    {
-      $match: {
-        user: new mongoose.Types.ObjectId(studentId),
-        markedAt: { $gte: thirtyDaysAgo },
-      },
-    },
-    {
-      $group: {
-        _id: {
-          $dateToString: { format: "%Y-%m-%d", date: "$markedAt" },
-        },
-        present: {
-          $sum: { $cond: [{ $eq: ["$status", "Present"] }, 1, 0] },
-        },
-        total: { $sum: 1 },
-      },
-    },
-    { $sort: { _id: 1 } },
-  ]);
 
   // Pending recommendations
   const pendingRecommendations = await Recommendation.find({
@@ -393,6 +381,7 @@ export const getStudentDashboardStats = async (studentId) => {
   });
 
   return {
+    assigned: true,
     student: {
       id: student._id,
       name: student.name,
@@ -401,13 +390,13 @@ export const getStudentDashboardStats = async (studentId) => {
       batch: student.batch,
     },
     batch: {
-      name: student.batch?.name || 'N/A',
-      currentSemester: student.batch?.semester || 'N/A'
+      name: student.batch?.name || "N/A",
+      currentSemester: student.batch?.semester || "N/A",
     },
     sessions: {
       total: totalClasses,
       attended: presentCount,
-      missed: totalClasses - presentCount
+      missed: totalClasses - presentCount,
     },
     attendance: {
       totalClasses,
@@ -416,8 +405,8 @@ export const getStudentDashboardStats = async (studentId) => {
       percentage: parseFloat(attendancePercentage),
     },
     attendanceRate: parseFloat(attendancePercentage),
-    upcomingClasses: todayClasses, // Match frontend expectation
-    thisWeekAttendance: thisWeekAttendance,
+    upcomingClasses: todayClasses,
+    thisWeekAttendance,
     recommendations: {
       pending: pendingRecommendations.length,
       list: pendingRecommendations,

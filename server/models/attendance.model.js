@@ -46,7 +46,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     method: {
       type: String,
-      enum: ["QR_Scan", "Location", "Manual"],
+      enum: ["QR_Scan", "Location", "QR_Scan+Location", "Manual"],
       default: "QR_Scan",
     },
     // GeoJSON location (longitude, latitude)

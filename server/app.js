@@ -17,30 +17,14 @@ export const app = express();
 
 /* ================= CORS FIRST ================= */
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://edutrack-hln.vercel.app"
-];
-
 const corsOptions = {
-  origin: function (origin, callback) {
-
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("Blocked by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-
-  credentials: true
+  // Reflect request origin so credentials/cookies can still be used across origins.
+  origin: true,
+  credentials: true,
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+
 
 /* ================= OTHER MIDDLEWARE ================= */
 

@@ -293,17 +293,33 @@ function AppContent() {
           <Route
             path="/unauthorized"
             element={
-              <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                  <h1 className="text-4xl font-bold text-red-600 mb-4">403</h1>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                    Unauthorized Access
-                  </h2>
-                  <p className="text-gray-600">
-                    You don't have permission to access this page.
-                  </p>
+              user?.role?.toLowerCase() === "student" ? (
+                <div className="flex items-center justify-center min-h-screen bg-green-50 px-4">
+                  <div className="max-w-lg w-full text-center bg-white border border-green-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-green-800 mb-3">
+                      Welcome to EduTrack
+                    </h1>
+                    <p className="text-green-700 text-sm sm:text-base mb-2">
+                      Ask admin to assign a section/batch to your account.
+                    </p>
+                    <p className="text-green-600 text-sm sm:text-base">
+                      Once your section is assigned, your student dashboard will be available here.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center justify-center min-h-screen">
+                  <div className="text-center">
+                    <h1 className="text-4xl font-bold text-red-600 mb-4">403</h1>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                      Unauthorized Access
+                    </h2>
+                    <p className="text-gray-600">
+                      You don't have permission to access this page.
+                    </p>
+                  </div>
+                </div>
+              )
             }
           />
         </Routes>

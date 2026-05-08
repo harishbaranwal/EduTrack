@@ -8,4 +8,15 @@ export default defineConfig({
     react(), 
     tailwindcss()
   ],
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      "/api/v1": {
+        target: "http://10.189.24.166:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

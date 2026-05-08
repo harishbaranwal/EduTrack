@@ -4,6 +4,7 @@ import { connectDB } from "./config/db.js";
 import { app } from "./app.js";
 
 const PORT = process.env.PORT || 5000
+const HOST = process.env.HOST || "0.0.0.0";
 
 connectDB();
 
@@ -15,6 +16,6 @@ app.get("/", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port: ${PORT}`)
+app.listen(PORT, HOST, () => {
+  console.log(`Server is running on http://${HOST}:${PORT}`)
 })

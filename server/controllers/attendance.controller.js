@@ -2,6 +2,8 @@ import Attendance from "../models/attendance.model.js";
 import Timetable from "../models/timetable.model.js";
 import Batch from "../models/batch.model.js";
 import User from "../models/user.model.js";
+import Device from "../models/device.model.js";
+import jwt from "jsonwebtoken";
 import { getISTDayName, timeToMinutes, getISTDateString } from "../utils/timezone.js";
 import { calculateDistance } from "../services/attendance.service.js";
 
@@ -70,24 +72,58 @@ const createOrUpdateAttendance = async (attendanceData, existingAttendance = nul
 export const markAttendanceByQR = async (req, res) => {
   try {
     const studentId = req.user.id;
-    const { qrData } = req.body;
+    const { qrData, qrToken, latitude, longitude, deviceId } = req.body;
 
-    if (!qrData) {
+    // support older clients that may send raw qrData, but prefer signed token
+    if (!qrToken && !qrData) {
       return res.status(400).json({
         success: false,
         message: "QR code data is required",
       });
     }
 
-    // Parse QR code data
-    let qrInfo;
-    try {
-      qrInfo = JSON.parse(qrData);
-    } catch (error) {
+    // Device binding: require deviceId and enforce uniqueness
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: "deviceId is required" });
+    }
+
+    // Check device binding: if device exists and bound to different user -> reject
+    const existingDevice = await Device.findOne({ deviceId });
+    if (existingDevice && existingDevice.user.toString() !== studentId) {
+      return res.status(403).json({ success: false, message: "This device is already bound to another student" });
+    }
+
+    // If device not present, auto-register it and bind to this student
+    if (!existingDevice) {
+      await Device.create({ deviceId, user: studentId, userAgent: req.headers['user-agent'] || 'unknown' });
+    } else {
+      // update lastSeen
+      existingDevice.lastSeen = new Date();
+      await existingDevice.save();
+    }
+
+    if (latitude == null || longitude == null) {
       return res.status(400).json({
         success: false,
-        message: "Invalid QR code format",
+        message: "Location is required to mark attendance",
       });
+    }
+
+    // Validate signed QR token if provided, else fall back to raw QR JSON
+    let qrInfo;
+    if (qrToken) {
+      try {
+        const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
+        qrInfo = jwt.verify(qrToken, secret);
+      } catch (err) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired QR token' });
+      }
+    } else {
+      try {
+        qrInfo = JSON.parse(qrData);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: 'Invalid QR code format' });
+      }
     }
 
     const { timetableId, subject, teacherId, date, startTime, endTime, batchId } = qrInfo;
@@ -98,6 +134,21 @@ export const markAttendanceByQR = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "You are not enrolled in this batch",
+      });
+    }
+
+    const distance = calculateDistance(
+      parseFloat(latitude),
+      parseFloat(longitude),
+      CAMPUS_LOCATION.latitude,
+      CAMPUS_LOCATION.longitude
+    );
+
+    if (distance > ALLOWED_RADIUS) {
+      return res.status(400).json({
+        success: false,
+        message: `You are ${distance.toFixed(0)}m away from campus. You must be within ${ALLOWED_RADIUS}m to mark attendance.`,
+        data: { distance, allowedRadius: ALLOWED_RADIUS },
       });
     }
 
@@ -126,8 +177,15 @@ export const markAttendanceByQR = async (req, res) => {
       classStartTime: startTime,
       classEndTime: endTime,
       status: "Present",
-      method: "QR_Scan",
+      method: "QR_Scan+Location",
       markedBy: studentId,
+      location: {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      },
+      distanceFromCampus: distance,
+      deviceId,
+      qrToken: qrToken || null,
     };
 
     const attendance = await createOrUpdateAttendance(attendanceData);
@@ -139,7 +197,7 @@ export const markAttendanceByQR = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Attendance marked successfully via QR code",
+      message: "Attendance marked successfully via QR code and location",
       data: attendance,
     });
   } catch (error) {
@@ -415,7 +473,7 @@ export const generateQRData = async (req, res) => {
         message: validation.message,
       });
     }
-    const qrData = {
+    const qrPayload = {
       timetableId: validation.timetable._id,
       subject: subject,
       teacherId: teacherId,
@@ -423,13 +481,17 @@ export const generateQRData = async (req, res) => {
       startTime: validation.classInfo.startTime,
       endTime: validation.classInfo.endTime,
       batchId: batchId,
-      timestamp: Date.now(),
+      iat: Math.floor(Date.now() / 1000),
     };
+
+    const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
+    // Sign token with short TTL (30s)
+    const token = jwt.sign(qrPayload, secret, { expiresIn: '30s' });
 
     res.status(200).json({
       success: true,
-      message: "QR data generated successfully",
-      data: { qrData: JSON.stringify(qrData) },
+      message: "QR token generated successfully",
+      data: { qrData: token },
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
