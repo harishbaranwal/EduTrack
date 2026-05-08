@@ -33,7 +33,10 @@ export const createTimetable = async (req, res) => {
       message: "Timetable created successfully",
       data: timetable,
     });
-  } catch (error) {res.status(error.statusCode || 500).json({
+  } catch (error) {
+    const statusCode = error.message?.includes('conflict') || error.message?.includes('already exists')
+      ? 409 : (error.statusCode || 500);
+    res.status(statusCode).json({
       success: false,
       message: error.message || "Failed to create timetable",
     });
@@ -149,7 +152,9 @@ export const updateTimetable = async (req, res) => {
       data: timetable,
     });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
+    const statusCode = error.message?.includes('conflict') || error.message?.includes('Scheduling')
+      ? 409 : (error.statusCode || 500);
+    res.status(statusCode).json({
       success: false,
       message: error.message || "Failed to update timetable",
     });
@@ -239,7 +244,9 @@ export const addClassToTimetable = async (req, res) => {
       data: timetable,
     });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
+    const statusCode = error.message?.includes('conflict') || error.message?.includes('Scheduling')
+      ? 409 : (error.statusCode || 500);
+    res.status(statusCode).json({
       success: false,
       message: error.message || "Failed to add class to timetable",
     });

@@ -107,8 +107,8 @@ const TimetableManagement = () => {
       return;
     }
 
-    // Check for time conflicts
-    const hasConflict = classes.some(cls => {
+    // Check for time slot conflicts (same batch, overlapping time)
+    const hasTimeConflict = classes.some(cls => {
       const newStart = classForm.startTime;
       const newEnd = classForm.endTime;
       const existingStart = cls.startTime;
@@ -121,8 +121,31 @@ const TimetableManagement = () => {
       );
     });
 
-    if (hasConflict) {
-      setError('Time conflict with existing class');
+    if (hasTimeConflict) {
+      setError('Time slot conflict with an existing class in this timetable.');
+      return;
+    }
+
+    // Check for teacher conflicts (same teacher assigned at overlapping times)
+    const teacherConflict = classes.find(cls => {
+      if (cls.teacher !== classForm.teacher && cls.teacher?._id !== classForm.teacher) return false;
+      const newStart = classForm.startTime;
+      const newEnd = classForm.endTime;
+      const existingStart = cls.startTime;
+      const existingEnd = cls.endTime;
+
+      return (
+        (newStart >= existingStart && newStart < existingEnd) ||
+        (newEnd > existingStart && newEnd <= existingEnd) ||
+        (newStart <= existingStart && newEnd >= existingEnd)
+      );
+    });
+
+    if (teacherConflict) {
+      const conflictTeacherName = getTeacherName(classForm.teacher);
+      setError(
+        `Scheduling conflict: Teacher "${conflictTeacherName}" is already assigned to "${teacherConflict.subject}" (${teacherConflict.startTime}–${teacherConflict.endTime}) in this timetable. A teacher cannot teach two classes at the same time.`
+      );
       return;
     }
 
