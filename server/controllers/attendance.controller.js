@@ -41,7 +41,7 @@ const CAMPUS_LOCATION = {
   longitude: parseFloat(process.env.CAMPUS_LONGITUDE || '75.70266'),
 };
 
-const ALLOWED_RADIUS = parseFloat(process.env.ATTENDANCE_RADIUS || '100');
+const ALLOWED_RADIUS = parseFloat(process.env.ATTENDANCE_RADIUS || '5000');
 
 // Helper function to validate teacher permissions for a subject
 const validateTeacherPermission = async (teacherId, batchId, subject, date = null) => {
@@ -204,7 +204,7 @@ export const markAttendanceByQR = async (req, res) => {
         teacherLongitude
       );
 
-      const TEACHER_RADIUS = 500;
+      const TEACHER_RADIUS = 5000;
       if (distanceFromTeacher > TEACHER_RADIUS) {
         return res.status(400).json({
           success: false,
@@ -335,7 +335,7 @@ export const verifyStudentLocation = async (req, res) => {
         teacherLoc.latitude, teacherLoc.longitude
       );
 
-      const TEACHER_RADIUS = 500;
+      const TEACHER_RADIUS = 5000;
       if (distanceFromTeacher > TEACHER_RADIUS) {
         return res.status(400).json({
           success: false,

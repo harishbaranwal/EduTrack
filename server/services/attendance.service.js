@@ -11,7 +11,7 @@ const CAMPUS_LOCATION = {
   longitude: parseFloat(process.env.CAMPUS_LONGITUDE || '75.70266'),
 };
 
-const ALLOWED_RADIUS = parseFloat(process.env.ATTENDANCE_RADIUS || '100');
+const ALLOWED_RADIUS = parseFloat(process.env.ATTENDANCE_RADIUS || '5000');
 
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3; 
