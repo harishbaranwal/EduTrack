@@ -94,9 +94,11 @@ const checkTeacherConflicts = async (day, classes, excludeTimetableId = null) =>
       'classes.teacher': teacherObjectId,
     };
 
+    // Use .lean() to prevent deep virtual field recursion that causes stack overflow
     const matchingTimetables = await Timetable.find(query)
       .populate('batch', 'name')
-      .populate('classes.teacher', 'name');
+      .populate('classes.teacher', 'name')
+      .lean();
 
     for (const tt of matchingTimetables) {
       for (const existingClass of tt.classes) {
