@@ -102,13 +102,17 @@ const Attendance = () => {
       };
 
       const result = await dispatch(markAttendanceQR(attendanceData));
-      if (result.type.includes('fulfilled')) {
+      if (result.type && result.type.includes('fulfilled')) {
         showToast.success(result.payload?.message || 'Attendance marked successfully using QR and location');
         setShowQRScanner(false);
         setQrData(null);
         setLocation(null);
         dispatch(fetchStudentAttendance({}));
         dispatch(fetchTodayClasses());
+      } else {
+        // show error message returned from thunk
+        const errMsg = result.payload || result.error?.message || 'Failed to mark attendance';
+        showToast.error(errMsg);
       }
     } catch {
       showToast.error('Failed to mark attendance');
