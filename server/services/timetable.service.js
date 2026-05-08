@@ -1,6 +1,7 @@
 import Timetable from "../models/timetable.model.js";
 import Batch from "../models/batch.model.js";
 import User from "../models/user.model.js";
+import mongoose from "mongoose";
 import { getISTDayName, timeToMinutes, calculateDuration as calcDuration } from "../utils/timezone.js";
 
 // Helper: Check time overlap between two intervals
@@ -12,7 +13,7 @@ const hasTimeOverlap = (start1, end1, start2, end2) => {
   );
 };
 
-// Helper: Resolve teacher ID from various formats
+// Helper: Resolve teacher ID from various formats (always returns a string or null)
 const resolveTeacherId = (teacher) => {
   if (!teacher) return null;
   if (typeof teacher === 'string') return teacher;
@@ -68,55 +69,57 @@ const checkTeacherConflicts = async (day, classes, excludeTimetableId = null) =>
   }
 
   // --- Step 2: Check cross-batch conflicts against existing timetables in the DB ---
+  // We must query with ObjectId, NOT string, because MongoDB stores teacher as ObjectId
+  const excludeQuery = excludeTimetableId
+    ? { _id: { $ne: excludeTimetableId } }
+    : {};
+
   for (const newClass of normalizedClasses) {
     const { teacherId } = newClass;
-    const newStart = newClass.startMinutes;
-    const newEnd = newClass.endMinutes;
-
     if (!teacherId) continue;
+
+    // Convert string teacherId to ObjectId for MongoDB query
+    let teacherObjectId;
+    try {
+      teacherObjectId = new mongoose.Types.ObjectId(teacherId);
+    } catch {
+      // If it's not a valid ObjectId, skip this class
+      console.warn(`Invalid teacher ID format: ${teacherId}`);
+      continue;
+    }
 
     const query = {
       day,
-      classes: {
-        $elemMatch: {
-          teacher: teacherId,
-          startTime: { $lt: newClass.endTime },
-          endTime: { $gt: newClass.startTime },
-        },
-      },
+      ...excludeQuery,
+      'classes.teacher': teacherObjectId,
     };
 
-    if (excludeTimetableId) {
-      query._id = { $ne: excludeTimetableId };
-    }
-
-    const conflictingTimetable = await Timetable.findOne(query)
+    const matchingTimetables = await Timetable.find(query)
       .populate('batch', 'name')
       .populate('classes.teacher', 'name');
 
-    if (!conflictingTimetable) continue;
+    for (const tt of matchingTimetables) {
+      for (const existingClass of tt.classes) {
+        const existingTeacherId = resolveTeacherId(existingClass.teacher);
+        if (existingTeacherId !== teacherId) continue;
 
-    const conflictingClass = conflictingTimetable.classes.find((existingClass) => {
-      const existingTeacherId = resolveTeacherId(existingClass.teacher);
-      if (existingTeacherId !== teacherId) return false;
+        const existingStart = timeToMinutes(existingClass.startTime);
+        const existingEnd = timeToMinutes(existingClass.endTime);
 
-      const existingStart = timeToMinutes(existingClass.startTime);
-      const existingEnd = timeToMinutes(existingClass.endTime);
-      return hasTimeOverlap(newStart, newEnd, existingStart, existingEnd);
-    });
-
-    if (conflictingClass) {
-      const teacherName = typeof conflictingClass.teacher === 'object'
-        ? conflictingClass.teacher.name
-        : (await User.findById(teacherId).select('name'))?.name || 'Unknown';
-      const batchName = typeof conflictingTimetable.batch === 'object'
-        ? conflictingTimetable.batch.name
-        : conflictingTimetable.batch;
-      throw new Error(
-        `Scheduling conflict: Teacher "${teacherName}" is already assigned to "${conflictingClass.subject}" in batch "${batchName}" on ${day} from ${conflictingClass.startTime} to ${conflictingClass.endTime}. The new class "${newClass.subject}" (${newClass.startTime}–${newClass.endTime}) overlaps with this. Please choose a different teacher or time slot.`
-      );
-    }
+        if (hasTimeOverlap(newClass.startMinutes, newClass.endMinutes, existingStart, existingEnd)) {
+          const teacherName = typeof existingClass.teacher === 'object'
+            ? existingClass.teacher.name
+            : (await User.findById(teacherId).select('name'))?.name || 'Unknown';
+          const batchName = typeof tt.batch === 'object'
+            ? tt.batch.name
+            : tt.batch;
+          throw new Error(
+            `Scheduling conflict: Teacher "${teacherName}" is already assigned to "${existingClass.subject}" in batch "${batchName}" on ${day} from ${existingClass.startTime} to ${existingClass.endTime}. The new class "${newClass.subject}" (${newClass.startTime}–${newClass.endTime}) overlaps with this. Please choose a different teacher or time slot.`
+          );
+        }
       }
+    }
+  }
 };
 
 // Create a new timetable
