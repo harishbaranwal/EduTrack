@@ -201,6 +201,9 @@ export const getStudentsByBatch = async (batchId) => {
     throw new Error("Batch not found");
   }
 
+  console.log(`[DEBUG] Batch: ${batch.name} (${batchId}), Students count: ${batch.students.length}`);
+  console.log(`[DEBUG] Students:`, batch.students);
+
   return batch.students;
 };
 
