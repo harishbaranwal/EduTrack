@@ -169,7 +169,7 @@ export const getAllTimetables = async (filters = {}) => {
 
   const timetables = await Timetable.find(query)
     .sort({ day: 1 })
-    .populate("batch", "name department year")
+    .populate("batch")
     .populate("classTeacher", "name email")
     .populate("classes.teacher", "name email");
 
@@ -234,7 +234,7 @@ export const getTeacherTimetable = async (teacherId, day = null) => {
   }
 
   const timetables = await Timetable.find(query)
-    .populate("batch", "name department year students")
+    .populate("batch")
     .populate("classes.teacher", "name email");
 
   // Filter classes to show only teacher's classes and format for frontend
@@ -243,6 +243,8 @@ export const getTeacherTimetable = async (teacherId, day = null) => {
   timetables.forEach((timetable) => {
     timetable.classes.forEach((classItem) => {
       if (classItem.teacher && classItem.teacher._id.toString() === teacherId.toString()) {
+        const studentCount = timetable.batch?.students?.length || 0;
+        console.log(`[Teacher Classes] ${classItem.subject} (${timetable.batch?.name}) - Students: ${studentCount}`);
         teacherClasses.push({
           dayOfWeek: timetable.day,
           day: timetable.day,
