@@ -30,7 +30,7 @@ const Attendance = () => {
   const [fingerprintId, setFingerprintId] = useState(null);
 
   const dispatch = useDispatch();
-  const { attendanceList, todayClasses, loading, locationVerified, verifiedClassInfo } = useSelector((state) => state.attendance);
+  const { attendanceList, todayClasses, todayBatchId, loading, locationVerified, verifiedClassInfo } = useSelector((state) => state.attendance);
 
   // Initialize FingerprintJS on mount
   useEffect(() => {
@@ -76,7 +76,7 @@ const Attendance = () => {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             subject: classItem.subject,
-            batchId: classItem.batchId || todayClasses[0]?.batchId,
+            batchId: todayBatchId,
           };
 
           dispatch(verifyLocation(locationData)).then((result) => {

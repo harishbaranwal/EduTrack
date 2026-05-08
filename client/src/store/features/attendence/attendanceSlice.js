@@ -5,6 +5,7 @@ const initialState = {
   attendanceList: [],
   currentAttendance: null,
   todayClasses: [],
+  todayBatchId: null,
   stats: null,
   loading: false,
   error: null,
@@ -204,6 +205,7 @@ const attendanceSlice = createSlice({
       .addCase(fetchTodayClasses.fulfilled, (state, action) => {
         state.loading = false;
         state.todayClasses = action.payload.data.classes || [];
+        state.todayBatchId = action.payload.data.batchId || null;
       })
       .addCase(fetchTodayClasses.rejected, (state, action) => {
         state.loading = false;

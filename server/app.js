@@ -59,6 +59,16 @@ app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/contact", contactRouter);
 app.use("/api/v1/chatbot", chatbotRouter);
 
+/* ================= HEALTH CHECK ================= */
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 /* ================= 404 ================= */
 
 app.use((req, res) => {
