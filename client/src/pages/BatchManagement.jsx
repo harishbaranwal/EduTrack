@@ -100,7 +100,6 @@ const BatchManagement = () => {
 
   const handleViewStudents = async (batch) => {
     setSelectedBatch(batch);
-    await dispatch(fetchBatchStudents(batch._id));
     setShowStudentsModal(true);
   };
 
@@ -383,9 +382,9 @@ const BatchManagement = () => {
           size="max-w-2xl"
         >
           <div className="overflow-y-auto max-h-[60vh]">
-            {batchStudents && batchStudents.length > 0 ? (
+            {selectedBatch?.students && selectedBatch.students.length > 0 ? (
               <div className="space-y-3">
-                {batchStudents.map((student) => (
+                {selectedBatch.students.map((student) => (
                   <div
                     key={student._id}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
