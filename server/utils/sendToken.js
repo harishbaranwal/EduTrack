@@ -11,6 +11,7 @@ export const sendToken = (user, statusCode, message, res) => {
     httpOnly: true,
     secure: false,
     sameSite: "Lax",
+    path: "/",
   };
 
   res.status(statusCode).cookie("token", token, options).json({

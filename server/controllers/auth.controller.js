@@ -229,13 +229,15 @@ export const login = async (req, res) => {
 // logout Controller
 export const logout = async (req, res) => {
   try {
-    const token = req.cookies.token;
-    res.cookie("token", null, {
-      expires: new Date(Date.now()),
+    const cookieOptions = {
       httpOnly: true,
       secure: false,
       sameSite: "Lax",
-    });
+      path: "/",
+    };
+
+    res.clearCookie("token", cookieOptions);
+
     res.status(200).json({
       success: true,
       message: "Logged out Successfully",
