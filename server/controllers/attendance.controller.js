@@ -302,14 +302,11 @@ export const verifyStudentLocation = async (req, res) => {
     // Get today's timetable to find the class
     const today = getISTDayName();
     const timetable = await Timetable.findOne({ batch: batchId, day: today });
-    if (!timetable) {
-      return res.status(404).json({ success: false, message: "No classes scheduled for today" });
-    }
 
-    const classInfo = timetable.classes.find(c => c.subject === subject);
-    if (!classInfo) {
-      return res.status(404).json({ success: false, message: "Subject not found in today's timetable" });
-    }
+    // If timetable data is missing on the deployed server, still allow the student
+    // to proceed after campus verification. Stage 2 QR validation still enforces
+    // the actual session, subject, and teacher data from the signed token.
+    const classInfo = timetable?.classes?.find(c => c.subject === subject) || null;
 
     // Check distance from campus
     const distanceFromCampus = calculateDistance(
@@ -325,8 +322,8 @@ export const verifyStudentLocation = async (req, res) => {
     }
 
     // Check distance from teacher if their location is available in cache
-    const teacherId = classInfo.teacher.toString();
-    const teacherLoc = teacherLocationCache.get(teacherId);
+    const teacherId = classInfo?.teacher?.toString();
+    const teacherLoc = teacherId ? teacherLocationCache.get(teacherId) : null;
     let distanceFromTeacher = null;
 
     if (teacherLoc) {
@@ -361,6 +358,7 @@ export const verifyStudentLocation = async (req, res) => {
         distanceFromTeacher: distanceFromTeacher !== null ? distanceFromTeacher.toFixed(1) : null,
         subject,
         batchId,
+        fallbackMode: !classInfo,
       },
     });
   } catch (error) {
