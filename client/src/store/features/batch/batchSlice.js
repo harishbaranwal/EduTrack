@@ -200,7 +200,7 @@ const batchSlice = createSlice({
       })
       .addCase(fetchBatchStudents.fulfilled, (state, action) => {
         state.loading = false;
-        state.students = action.payload.students;
+        state.students = action.payload.data || action.payload.students || [];
       })
       .addCase(fetchBatchStudents.rejected, (state, action) => {
         state.loading = false;
