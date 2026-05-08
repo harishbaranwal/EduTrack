@@ -103,16 +103,19 @@ const Attendance = () => {
 
       const result = await dispatch(markAttendanceQR(attendanceData));
       if (result.type && result.type.includes('fulfilled')) {
-        showToast.success(result.payload?.message || 'Attendance marked successfully using QR and location');
+        const serverMessage = result.payload?.message || 'Attendance marked successfully using QR and location';
+        showToast.success(serverMessage);
         setShowQRScanner(false);
         setQrData(null);
         setLocation(null);
         dispatch(fetchStudentAttendance({}));
         dispatch(fetchTodayClasses());
       } else {
-        // show error message returned from thunk
         const errMsg = result.payload || result.error?.message || 'Failed to mark attendance';
-        showToast.error(errMsg);
+        const display = result.payload && typeof result.payload === 'object'
+          ? (result.payload.message || JSON.stringify(result.payload))
+          : errMsg;
+        showToast.error(display);
       }
     } catch {
       showToast.error('Failed to mark attendance');
@@ -259,6 +262,7 @@ const Attendance = () => {
                       Once both QR and location are captured, your attendance will be verified together.
                     </p>
                   </div>
+
                 </div>
 
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
