@@ -82,7 +82,7 @@ const Attendance = () => {
   };
 
   const submitCombinedAttendance = async (capturedQrData = qrData, capturedLocation = location) => {
-    if (!capturedQrData) {
+    if (!capturedQrData || capturedQrData.trim() === '') {
       showToast.error('Please scan the QR code first');
       return;
     }
@@ -126,6 +126,12 @@ const Attendance = () => {
 
   const handleQRSuccess = async (qrData) => {
     try {
+      // Validate scanned data is not empty
+      if (!qrData || qrData.trim() === '') {
+        showToast.error('QR code scan failed. Please try again.');
+        return;
+      }
+      
       setQrData(qrData);
       setShowQRScanner(false);
 

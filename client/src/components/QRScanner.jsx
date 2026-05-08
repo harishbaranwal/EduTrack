@@ -95,6 +95,12 @@ const QRScanner = ({ onSuccess }) => {
     try {
       setMessage('Processing QR code...');
       
+      // Validate that we got actual QR data
+      if (!qrData || qrData.trim() === '') {
+        setMessage('QR code is empty. Please try again.');
+        return;
+      }
+      
       if (onSuccess) {
         // Call the parent component's success handler
         await onSuccess(qrData);
@@ -103,7 +109,8 @@ const QRScanner = ({ onSuccess }) => {
         setMessage('QR code scanned: ' + qrData.substring(0, 50) + '...');
       }
     } catch (error) {
-      setMessage('Failed to process QR code. Please try again.');}
+      setMessage('Failed to process QR code. Please try again.');
+    }
   };
 
   // Start scanning
