@@ -272,7 +272,10 @@ const Attendance = () => {
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                       <p className="text-sm text-green-700 mb-3">
                         ✅ Location verified for <strong>{verifiedClassInfo?.subject}</strong>! 
-                        You are {verifiedClassInfo?.distanceFromTeacher}m from your teacher. Now scan the QR code.
+                        {verifiedClassInfo?.distanceFromTeacher 
+                          ? `You are ${verifiedClassInfo.distanceFromTeacher}m from your teacher. `
+                          : `You are on campus. `}
+                        Now scan the QR code.
                       </p>
                       <button
                         onClick={() => setShowQRScanner(true)}

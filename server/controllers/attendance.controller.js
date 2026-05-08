@@ -311,16 +311,6 @@ export const verifyStudentLocation = async (req, res) => {
       return res.status(404).json({ success: false, message: "Subject not found in today's timetable" });
     }
 
-    // Check if teacher has shared location (look in teacherLocationCache)
-    const teacherId = classInfo.teacher.toString();
-    const teacherLoc = teacherLocationCache.get(teacherId);
-    if (!teacherLoc) {
-      return res.status(400).json({
-        success: false,
-        message: "Your teacher has not enabled location sharing for this class yet. Please wait.",
-      });
-    }
-
     // Check distance from campus
     const distanceFromCampus = calculateDistance(
       parseFloat(latitude), parseFloat(longitude),
@@ -334,28 +324,41 @@ export const verifyStudentLocation = async (req, res) => {
       });
     }
 
-    // Check distance from teacher
-    const distanceFromTeacher = calculateDistance(
-      parseFloat(latitude), parseFloat(longitude),
-      teacherLoc.latitude, teacherLoc.longitude
-    );
+    // Check distance from teacher if their location is available in cache
+    const teacherId = classInfo.teacher.toString();
+    const teacherLoc = teacherLocationCache.get(teacherId);
+    let distanceFromTeacher = null;
 
-    const TEACHER_RADIUS = 500;
-    if (distanceFromTeacher > TEACHER_RADIUS) {
-      return res.status(400).json({
-        success: false,
-        message: "Go to classroom, you are too faraway from class.",
-      });
+    if (teacherLoc) {
+      distanceFromTeacher = calculateDistance(
+        parseFloat(latitude), parseFloat(longitude),
+        teacherLoc.latitude, teacherLoc.longitude
+      );
+
+      const TEACHER_RADIUS = 500;
+      if (distanceFromTeacher > TEACHER_RADIUS) {
+        return res.status(400).json({
+          success: false,
+          message: "Go to classroom, you are too faraway from class.",
+        });
+      }
     }
+    // If teacher location is not in cache, we still allow campus-verified students
+    // to proceed — the QR scan (Stage 2) will verify teacher proximity using the
+    // teacher coordinates embedded in the signed QR token.
 
     // Location verified — student can now proceed to scan QR
+    const message = distanceFromTeacher !== null
+      ? "Location verified! You are near your teacher. Please scan the QR code now."
+      : "Campus location verified! Please scan the QR code now.";
+
     res.status(200).json({
       success: true,
-      message: "Location verified! You are near your teacher. Please scan the QR code now.",
+      message,
       data: {
         locationVerified: true,
         distanceFromCampus: distanceFromCampus.toFixed(1),
-        distanceFromTeacher: distanceFromTeacher.toFixed(1),
+        distanceFromTeacher: distanceFromTeacher !== null ? distanceFromTeacher.toFixed(1) : null,
         subject,
         batchId,
       },
