@@ -86,6 +86,19 @@ const UserManagement = () => {
     }
   };
 
+  const handleDelete = async (user) => {
+    if (!window.confirm(`Are you sure you want to delete user "${user.name}"?`)) {
+      return;
+    }
+
+    const result = await dispatch(deleteUser(user._id));
+
+    if (result.type.includes('fulfilled')) {
+      showToast.success('User deleted successfully');
+      dispatch(filter === 'all' ? fetchAllUsers() : fetchUsersByRole(filter));
+    }
+  };
+
   const filteredUsers = users?.filter((user) =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -250,12 +263,20 @@ const UserManagement = () => {
                         {formatDate(user.createdAt)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          Edit
-                        </button>
+                        <div className="inline-flex items-center gap-3">
+                          <button
+                            onClick={() => handleEdit(user)}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(user)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -315,12 +336,20 @@ const UserManagement = () => {
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleEdit(user)}
-                        className="ml-2 text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                      >
-                        Edit
-                      </button>
+                      <div className="ml-2 flex items-center gap-3">
+                        <button
+                          onClick={() => handleEdit(user)}
+                          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user)}
+                          className="text-red-600 hover:text-red-900 text-sm font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
