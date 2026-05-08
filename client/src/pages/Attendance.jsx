@@ -95,7 +95,7 @@ const Attendance = () => {
     try {
       setSubmittingAttendance(true);
       const attendanceData = {
-        qrToken: capturedQrData,
+        qrData: capturedQrData,  // Send short QR code, server will resolve from cache
         latitude: capturedLocation.latitude,
         longitude: capturedLocation.longitude,
         deviceId: getOrCreateDeviceId(),

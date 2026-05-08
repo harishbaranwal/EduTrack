@@ -7,6 +7,24 @@ import jwt from "jsonwebtoken";
 import { getISTDayName, timeToMinutes, getISTDateString } from "../utils/timezone.js";
 import { calculateDistance } from "../services/attendance.service.js";
 
+// In-memory store for active QR tokens (short-lived cache)
+const qrTokenCache = new Map();
+
+// Clean up expired QR tokens every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of qrTokenCache.entries()) {
+    if (value.expiresAt < now) {
+      qrTokenCache.delete(key);
+    }
+  }
+}, 60000);
+
+// Generate a random short QR code ID
+const generateQRCode = () => {
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
+};
+
 // Campus location constants
 const CAMPUS_LOCATION = {
   latitude: parseFloat(process.env.CAMPUS_LATITUDE || '31.26234'),
@@ -74,8 +92,17 @@ export const markAttendanceByQR = async (req, res) => {
     const studentId = req.user.id;
     const { qrData, qrToken, latitude, longitude, deviceId } = req.body;
 
-    // support older clients that may send raw qrData, but prefer signed token
-    if (!qrToken && !qrData) {
+    // Support both short QR code (from cache) and direct token
+    let resolvedToken = qrToken;
+    if (!resolvedToken && qrData) {
+      // Try to resolve short QR code from cache
+      const cacheEntry = qrTokenCache.get(qrData);
+      if (cacheEntry) {
+        resolvedToken = cacheEntry.token;
+      }
+    }
+
+    if (!resolvedToken) {
       return res.status(400).json({
         success: false,
         message: "QR code data is required",
@@ -109,21 +136,13 @@ export const markAttendanceByQR = async (req, res) => {
       });
     }
 
-    // Validate signed QR token if provided, else fall back to raw QR JSON
+    // Validate signed QR token
     let qrInfo;
-    if (qrToken) {
-      try {
-        const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
-        qrInfo = jwt.verify(qrToken, secret);
-      } catch (err) {
-        return res.status(400).json({ success: false, message: 'Invalid or expired QR token' });
-      }
-    } else {
-      try {
-        qrInfo = JSON.parse(qrData);
-      } catch (error) {
-        return res.status(400).json({ success: false, message: 'Invalid QR code format' });
-      }
+    try {
+      const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
+      qrInfo = jwt.verify(resolvedToken, secret);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired QR code. Please ask your teacher to generate a new one.' });
     }
 
     const { timetableId, subject, teacherId, date, startTime, endTime, batchId } = qrInfo;
@@ -185,7 +204,7 @@ export const markAttendanceByQR = async (req, res) => {
       },
       distanceFromCampus: distance,
       deviceId,
-      qrToken: qrToken || null,
+      qrToken: resolvedToken || null,
     };
 
     const attendance = await createOrUpdateAttendance(attendanceData);
@@ -451,6 +470,24 @@ export const getClassAttendance = async (req, res) => {
 };
 
 // Generate QR data for attendance
+// In-memory store for active QR tokens (short-lived cache)
+const qrTokenCache = new Map();
+
+// Clean up expired QR tokens every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of qrTokenCache.entries()) {
+    if (value.expiresAt < now) {
+      qrTokenCache.delete(key);
+    }
+  }
+}, 60000);
+
+// Generate a random short QR code ID
+const generateQRCode = () => {
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
+};
+
 export const generateQRData = async (req, res) => {
   try {
     const { batchId, subject } = req.body;
@@ -473,6 +510,9 @@ export const generateQRData = async (req, res) => {
         message: validation.message,
       });
     }
+    
+    // Generate a short QR code and store the full payload
+    const qrCode = generateQRCode();
     const qrPayload = {
       timetableId: validation.timetable._id,
       subject: subject,
@@ -485,13 +525,19 @@ export const generateQRData = async (req, res) => {
     };
 
     const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
-    // Sign token with short TTL (30s)
     const token = jwt.sign(qrPayload, secret, { expiresIn: '30s' });
+    
+    // Cache the token with short code (valid for 35 seconds to account for generation delay)
+    qrTokenCache.set(qrCode, {
+      token: token,
+      payload: qrPayload,
+      expiresAt: Date.now() + 35000
+    });
 
     res.status(200).json({
       success: true,
-      message: "QR token generated successfully",
-      data: { qrData: token },
+      message: "QR code generated successfully",
+      data: { qrData: qrCode }, // Send short code instead of full JWT
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({

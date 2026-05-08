@@ -259,10 +259,10 @@ const TeacherAttendance = () => {
                         Students can scan this QR code to mark attendance
                       </p>
                       <p className="text-sm text-red-500 mt-1">
-                        Valid until: {currentClass?.endTime}
+                        Valid for 30 seconds • Refreshes automatically
                       </p>
-                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-gray-600 break-all max-h-20 overflow-y-auto">
-                        <strong>Token:</strong> {qrData.substring(0, 50)}...
+                      <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-gray-700 font-mono">
+                        <strong>QR Code:</strong> {qrData}
                       </div>
                     </div>
                   ) : (
