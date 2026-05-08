@@ -7,6 +7,8 @@ import showToast from '../utils/toast';
 import { getRelativeTime } from '../utils/dateUtils';
 import { Bell, User, LogOut, ChevronDown, BrainCircuit, Menu, X } from 'lucide-react';
 
+const LOGOUT_MARKER_KEY = 'edutrack_logout_marker';
+
 const Navbar = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -58,6 +60,7 @@ const Navbar = () => {
   const handleLogout = async () => {
     const result = await dispatch(logout());
     if (result.type.includes('fulfilled')) {
+      localStorage.setItem(LOGOUT_MARKER_KEY, 'true');
       showToast.success('Logged out successfully');
       navigate('/login');
     }

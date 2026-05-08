@@ -6,6 +6,8 @@ import showToast from '../utils/toast';
 import Loader from '../components/Loader';
 import { BrainCircuit, ArrowLeft } from 'lucide-react';
 
+const LOGOUT_MARKER_KEY = 'edutrack_logout_marker';
+
 const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -47,6 +49,7 @@ const Login = () => {
       showToast.error('Please fill in all fields');
       return;
     }
+    localStorage.removeItem(LOGOUT_MARKER_KEY);
     dispatch(login(formData));
   };
 
