@@ -69,6 +69,16 @@ app.get("/", (req, res) => {
   });
 });
 
+/* ================= HEALTH CHECK ================= */
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 /* ================= 404 ================= */
 
 app.use((req, res) => {

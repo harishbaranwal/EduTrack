@@ -8,13 +8,8 @@ const HOST = process.env.HOST || "0.0.0.0";
 
 connectDB();
 
-app.get("/", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-  });
-});
+// Health check moved to app.js
+
 
 app.listen(PORT, HOST, () => {
   console.log(`Server is running on http://${HOST}:${PORT}`)
