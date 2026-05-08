@@ -189,9 +189,9 @@ export const getBatchStatistics = async (req, res) => {
 
 export const getStudentsByBatch = async (req, res) => {
   try {
-    const { batchId } = req.params;
+    const { id } = req.params;
 
-    const students = await batchService.getStudentsByBatch(batchId);
+    const students = await batchService.getStudentsByBatch(id);
 
     res.status(200).json({
       success: true,
