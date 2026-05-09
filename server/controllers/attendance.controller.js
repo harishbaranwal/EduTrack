@@ -56,12 +56,12 @@ const validateTeacherPermission = async (teacherId, batchId, subject, date = nul
     // Use current IST day if no date provided
     dayName = getISTDayName();
   }
-    
+
   const timetable = await Timetable.findOne({
     batch: batchId,
     day: dayName,
   });
-  
+
   if (!timetable) {
     return { valid: false, message: `No classes scheduled for ${dayName}` };
   }
@@ -104,18 +104,24 @@ export const markAttendanceByQR = async (req, res) => {
 
     // Support both short QR code (from cache) and direct token
     let resolvedToken = qrToken;
+
     if (!resolvedToken && qrData) {
-      // Try to resolve short QR code from cache
-      const cacheEntry = qrTokenCache.get(qrData);
-      if (cacheEntry) {
-        resolvedToken = cacheEntry.token;
+      // First, check if qrData is already a JWT token (starts with 'eyJ')
+      if (qrData.startsWith('eyJ')) {
+        resolvedToken = qrData;
+      } else {
+        // Try to resolve short QR code from cache
+        const cacheEntry = qrTokenCache.get(qrData);
+        if (cacheEntry) {
+          resolvedToken = cacheEntry.token;
+        }
       }
     }
 
     if (!resolvedToken) {
       return res.status(400).json({
         success: false,
-        message: "QR code data is required",
+        message: "QR code data is required or invalid. Please scan the QR code again.",
       });
     }
 
@@ -433,7 +439,7 @@ export const getStudentAttendance = async (req, res) => {
 
     // Build query
     const query = { user: studentId };
-    
+
     if (subject) query.subject = subject;
 
     // Date filtering
@@ -593,7 +599,7 @@ export const generateQRData = async (req, res) => {
         message: `QR code generation is only available within the first ${QR_WINDOW_MINUTES} minutes of class start (${validation.classInfo.startTime}). The QR window has closed.`,
       });
     }
-    
+
     // Generate a short QR code and store the full payload with teacher location
     const qrCode = generateQRCode();
     const qrPayload = {
@@ -611,7 +617,7 @@ export const generateQRData = async (req, res) => {
 
     const secret = process.env.QR_SECRET || process.env.JWT_SECRET || 'dev-qr-secret';
     const token = jwt.sign(qrPayload, secret, { expiresIn: '30s' });
-    
+
     // Cache the token with short code (valid for 35 seconds to account for generation delay)
     qrTokenCache.set(qrCode, {
       token: token,
@@ -701,7 +707,7 @@ export const markManualAttendance = async (req, res) => {
     // Get timetable info for the attendance date
     const attendanceDate = new Date(date);
     const dayName = attendanceDate.toLocaleDateString('en-US', { weekday: 'long' });
-    
+
     const timetable = await Timetable.findOne({
       batch: batchId,
       day: dayName,
@@ -815,7 +821,7 @@ export const markBulkManualAttendance = async (req, res) => {
     } else {
       dayName = getISTDayName();
     }
-    
+
     const timetable = await Timetable.findOne({
       batch: batchId,
       day: dayName,
@@ -924,7 +930,7 @@ export const getAttendanceHistory = async (req, res) => {
 
     // Build filter object
     const filter = {};
-    
+
     if (studentId) {
       const student = await User.findById(studentId);
       if (!student || student.role !== "Student") {
@@ -1016,7 +1022,7 @@ export const getAttendanceHistory = async (req, res) => {
 export const getTodayClasses = async (req, res) => {
   try {
     const studentId = req.user.id;
-    
+
     // Get student's batch
     const student = await User.findById(studentId).populate('batch');
     if (!student || !student.batch) {
