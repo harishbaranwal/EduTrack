@@ -18,11 +18,18 @@ export const app = express();
 /* ================= CORS FIRST ================= */
 // Allow all origins during development for easier testing across devices.
 // In production, restrict to a whitelist.
-const allowedOrigins = [
+const defaultOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
-  "https://edutrack-hln.vercel.app"
+  "https://edutrack-hln.vercel.app",
 ];
+
+// Allow additional origins via env var (comma-separated)
+const envOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+  : [];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 const corsOptions = {
   origin: function (origin, callback) {

@@ -4,13 +4,15 @@ export const sendToken = (user, statusCode, message, res) => {
   const token = user.generateToken();
   const response = userResponse(user);
 
+  const isProduction = process.env.NODE_ENV === "production";
+
   const options = {
     expires: new Date(
       Date.now() + (process.env.COOKIE_EXPIRE || 24) * 60 * 60 * 1000
     ),
     httpOnly: true,
-    secure: false,
-    sameSite: "Lax",
+    secure: isProduction,
+    sameSite: isProduction ? "None" : "Lax",
     path: "/",
   };
 
