@@ -16,13 +16,28 @@ const hasTimeOverlap = (start1, end1, start2, end2) => {
 // Helper: Resolve teacher ID from various formats (always returns a string or null)
 const resolveTeacherId = (teacher) => {
   if (!teacher) return null;
+
+  // If it's already a string, return it
   if (typeof teacher === 'string') return teacher;
 
-  if (typeof teacher === 'object') {
-    if (teacher._id) return resolveTeacherId(teacher._id);
-    if (teacher.id) return resolveTeacherId(teacher.id);
+  // If it's a Mongoose ObjectId instance, convert to string
+  if (teacher.constructor && teacher.constructor.name === 'ObjectId') {
+    return teacher.toString();
   }
 
+  // If it's an object with _id or id property
+  if (typeof teacher === 'object') {
+    // Check if _id exists and is not the same object (prevent infinite recursion)
+    if (teacher._id && teacher._id !== teacher) {
+      return resolveTeacherId(teacher._id);
+    }
+    // Check if id exists and is not the same object
+    if (teacher.id && teacher.id !== teacher) {
+      return resolveTeacherId(teacher.id);
+    }
+  }
+
+  // Try toString as last resort
   if (typeof teacher?.toString === 'function') {
     const raw = teacher.toString();
     if (raw && raw !== '[object Object]') return raw;
@@ -125,7 +140,7 @@ const checkTeacherConflicts = async (day, classes, excludeTimetableId = null) =>
 };
 
 // Create a new timetable
- 
+
 export const createTimetable = async (timetableData) => {
   // Validate that batch exists
   const batch = await Batch.findById(timetableData.batch);
@@ -179,7 +194,7 @@ export const getAllTimetables = async (filters = {}) => {
 };
 
 // Get timetable by ID
- 
+
 export const getTimetableById = async (timetableId) => {
   const timetable = await Timetable.findById(timetableId)
     .populate("batch", "name department year students")
@@ -227,7 +242,7 @@ export const getWeeklyTimetable = async (batchId) => {
 };
 
 // Get timetable for a teacher
- 
+
 export const getTeacherTimetable = async (teacherId, day = null) => {
   const query = { "classes.teacher": teacherId };
 
@@ -267,7 +282,7 @@ export const getTeacherTimetable = async (teacherId, day = null) => {
 };
 
 //  Update timetable
- 
+
 export const updateTimetable = async (timetableId, updateData) => {
   // If classes are being updated, check for teacher conflicts
   if (updateData.classes && updateData.classes.length > 0) {
@@ -295,7 +310,7 @@ export const updateTimetable = async (timetableId, updateData) => {
 };
 
 //  Delete timetable
- 
+
 export const deleteTimetable = async (timetableId) => {
   const timetable = await Timetable.findByIdAndDelete(timetableId);
 
@@ -428,7 +443,7 @@ export const addClassToTimetable = async (timetableId, classData) => {
 };
 
 // Remove class from timetable
- 
+
 export const removeClassFromTimetable = async (timetableId, classId) => {
   const timetable = await Timetable.findById(timetableId);
 
