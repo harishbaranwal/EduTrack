@@ -146,21 +146,10 @@ const Timetable = () => {
           </p>
         </div>
 
-        {/* Student mobile/tablet restriction notice */}
-        {user?.role === 'Student' && (
-          <div className="lg:hidden bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
-            <CalendarDays className="mx-auto h-10 w-10 text-amber-500 mb-3" />
-            <h3 className="text-lg font-semibold text-amber-800 mb-2">Desktop View Only</h3>
-            <p className="text-sm text-amber-700">
-              The timetable is available only on laptop or desktop view. Please open this page on a larger screen to view your class schedule.
-            </p>
-          </div>
-        )}
-
-        {/* Mobile View - Day Cards (hidden for students, they must use desktop) */}
-        <div className={`lg:hidden space-y-4 ${user?.role === 'Student' ? 'hidden' : ''}`}>
+        {/* Mobile View - Day Cards */}
+        <div className="lg:hidden space-y-4">
           {daysOfWeek.map((day) => {
-            const dayClasses = Array.isArray(timetables) ? timetables.filter(t => t.day === day) : [];
+            const dayClasses = getTimetableForDay(day);
             return (
               <div key={day} className="bg-white rounded-lg shadow-md overflow-hidden">
                 <div className={`px-4 py-3 font-medium text-sm ${
@@ -173,20 +162,20 @@ const Timetable = () => {
                 <div className="p-4">
                   {dayClasses.length > 0 ? (
                     <div className="space-y-3">
-                      {dayClasses.map((timetableEntry, index) => (
+                      {dayClasses.map((cls, index) => (
                         <div key={index} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-gray-900 text-sm">{timetableEntry.subject}</h4>
+                            <h4 className="font-semibold text-gray-900 text-sm">{cls.subject}</h4>
                             <span className="text-xs text-gray-500">
-                              {formatTimeDisplay(timetableEntry.startTime)} - {formatTimeDisplay(timetableEntry.endTime)}
+                              {formatTimeDisplay(cls.startTime)} - {formatTimeDisplay(cls.endTime)}
                             </span>
                           </div>
                           <div className="space-y-1 text-xs text-gray-600">
-                            {timetableEntry.teacher && (
-                              <p> {timetableEntry.teacher.name}</p>
+                            {cls.teacher?.name && (
+                              <p>{cls.teacher.name}</p>
                             )}
-                            {timetableEntry.room && (
-                              <p> Room {timetableEntry.room}</p>
+                            {cls.room && (
+                              <p>Room {cls.room}</p>
                             )}
                           </div>
                         </div>
